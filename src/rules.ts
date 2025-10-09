@@ -5,6 +5,8 @@ import AhoCorasick from 'ahocorasick';
 import { ratio } from 'fuzzball';
 import path from 'path';
 import * as readline from 'readline';
+import yargs from 'yargs/yargs';
+import { hideBin } from 'yargs/helpers';
 
 import { Jieba } from '@node-rs/jieba';
 import { dict } from '@node-rs/jieba/dict';
@@ -234,11 +236,15 @@ async function verifyChapterNumber(
 }
 
 
-const MAIN_PATH = 'C:\\Users\\tarun\\CodingProjects\\nt\\translations\\TheMirrorLegacy\\assets\\';
-const TRANSLATION_PATH = 'C:\\Users\\tarun\\CodingProjects\\nt\\translations\\TheMirrorLegacy\\translations';
+const BASE_TRANSLATIONS_PATH = 'C:\\Users\\tarun\\Translations';
 
-async function processAndCopy(): Promise<void> {
+async function processAndCopy(projectName: string): Promise<void> {
+    const MAIN_PATH = path.join(BASE_TRANSLATIONS_PATH, projectName, 'assets');
+    const TRANSLATION_PATH = path.join(BASE_TRANSLATIONS_PATH, projectName, 'translations');
+
     try {
+        console.log(`Processing project: ${projectName}`);
+
         console.log('Loading Chinese segmenter dictionary...');
         const jieba = Jieba.withDict(dict);
         console.log('Dictionary loaded.');
@@ -351,6 +357,26 @@ async function processAndCopy(): Promise<void> {
     }
 }
 
-if (import.meta.main) {
-    await processAndCopy();
+async function main() {
+    const argv = await yargs(hideBin(process.argv))
+        .option('project', {
+            type: 'string',
+            description: 'The name of the project directory to process',
+            demandOption: true,
+        })
+        .help()
+        .parse();
+
+    await processAndCopy(argv.project);
 }
+
+main().catch(error => {
+    if (error.code === 'ENOENT') {
+        console.error('\n--- ❌ ERROR: FILE NOT FOUND ---');
+        console.error(`Please ensure the file '${error.path}' exists and try again.`);
+    } else {
+        console.error(`\n--- ❌ ERROR ---`);
+        console.error(error.message);
+    }
+    process.exit(1);
+});

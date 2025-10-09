@@ -4,10 +4,6 @@ import pino from 'pino';
 import yargs from 'yargs/yargs';
 import { hideBin } from 'yargs/helpers';
 
-const DEFAULT_FOLDER_PATH = String.raw`C:\Users\tarun\CodingProjects\nt\translations\TheMirrorLegacy\translations`;
-const DEFAULT_SEARCH_PATTERN = String.raw`Dusian`;
-const DEFAULT_REPLACEMENT = "Capital Immortals";
-
 const transport = {
     target: 'pino-pretty',
     options: { colorize: true },
@@ -132,29 +128,29 @@ async function replaceInFolder(
 
 async function main() {
     const argv = await yargs(hideBin(process.argv))
-        .option('folder_path', {
+        .option('folder', {
             alias: 'f',
             type: 'string',
-            description: 'Folder path to scan files',
-            default: DEFAULT_FOLDER_PATH,
+            description: 'Folder path containing files to process',
+            demandOption: true,
         })
         .option('search_pattern', {
             alias: 's',
             type: 'string',
             description: 'Regex pattern to search (case-insensitive)',
-            default: DEFAULT_SEARCH_PATTERN,
+            demandOption: true,
         })
         .option('replacement', {
             alias: 'r',
             type: 'string',
             description: 'Replacement phrase',
-            default: DEFAULT_REPLACEMENT,
+            demandOption: true,
         })
         .help()
         .alias('help', 'h')
         .parse();
 
-    const folderPath = argv.folder_path as string;
+    const folderPath = argv.folder as string;
     const searchPattern = argv.search_pattern as string;
     const replacement = argv.replacement as string;
 

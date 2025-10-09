@@ -1,8 +1,14 @@
-import { command, run, positional, option, flag, string } from "cmd-ts";
 import { readdirSync, readFileSync, writeFileSync, existsSync, statSync } from "fs";
 import { join, extname, basename } from "path";
+import yargs from 'yargs/yargs';
+import { hideBin } from 'yargs/helpers';
 
 export type Result = [string, number, string];
+
+// --- NO CHANGES TO THE CORE LOGIC FUNCTIONS ---
+// The functions findFirstWordInstanceInFolder, findFirstWordInstance,
+// findWordAllInstances, printTable, and writeParagraphsToFile
+// remain exactly the same as before.
 
 export function findFirstWordInstanceInFolder(folderPath: string, searchPattern: string, useRegex = false): number | null {
     if (!existsSync(folderPath) || !statSync(folderPath).isDirectory()) {
@@ -167,48 +173,74 @@ function writeParagraphsToFile(results: Result[], outputFile: string, folderPath
     }
 }
 
-const cli = command({
-    name: "bun finder.ts",
-    description: "Find all instances of a word or regex pattern in Markdown files",
-    args: {
-        searchPattern: positional({ type: string, displayName: "searchPattern", description: "Search word or regex pattern" }),
-        folder: option({ type: string, long: "folder", short: "f", defaultValue: () => String.raw`C:\Users\tarun\CodingProjects\nt\translations\TheMirrorLegacy\translations`, description: "Folder to scan" }),
-        regex: flag({ long: "regex", description: "Treat search pattern as regular expression" }),
-        output: option({ type: string, long: "output", short: "o", defaultValue: () => "", description: "Output file to write paragraphs to (optional)" }),
-        quiet: flag({ long: "quiet", short: "q", description: "Suppress table output, only show summary" }),
-    },
-    handler: ({ searchPattern, folder, regex, output, quiet }) => {
-        try {
-            const start = Date.now();
-            const { results, filesScanned, totalMatches } = findWordAllInstances(folder, searchPattern, regex);
-            const elapsed = (Date.now() - start) / 1000;
+// --- NEW YARGS-BASED MAIN FUNCTION ---
 
-            if (results.length > 0) {
-                if (!quiet) {
-                    console.log(`\nResults for pattern '${searchPattern}':\n`);
-                    printTable(results);
-                }
-                if (output != "") {
-                    writeParagraphsToFile(results, output, folder);
-                }
-            } else {
-                console.log(`The pattern '${searchPattern}' was not found in any file.`);
-            }
+async function main() {
+    const argv = await yargs(hideBin(process.argv))
+        .usage('Usage: bun run finder.ts <searchPattern> [options]')
+        .positional('searchPattern', {
+            describe: 'Search word or regex pattern',
+            type: 'string',
+            demandOption: true,
+        })
+        .option('folder', {
+            alias: 'f',
+            type: 'string',
+            description: 'Folder to scan (provided by runner script)',
+            demandOption: true,
+        })
+        .option('regex', {
+            type: 'boolean',
+            description: 'Treat search pattern as a regular expression',
+            default: false,
+        })
+        .option('output', {
+            alias: 'o',
+            type: 'string',
+            description: 'Output file to write paragraphs to (optional)',
+            default: '',
+        })
+        .option('quiet', {
+            alias: 'q',
+            type: 'boolean',
+            description: 'Suppress table output, only show summary',
+            default: false,
+        })
+        .demandCommand(1, 'Error: You must provide a search pattern.')
+        .help()
+        .alias('help', 'h')
+        .parse();
 
-            console.log(`\nFiles scanned: ${filesScanned}`);
-            console.log(`Total matches: ${totalMatches}`);
-            console.log(`Elapsed Time: ${elapsed.toFixed(2)} seconds`);
-            if (output && results.length > 0) {
-                console.log(`Output written to: ${output}`);
+    const searchPattern = argv._[0] as string;
+    const { folder, regex, output, quiet } = argv;
+
+    try {
+        const start = Date.now();
+        const { results, filesScanned, totalMatches } = findWordAllInstances(folder, searchPattern, regex);
+        const elapsed = (Date.now() - start) / 1000;
+
+        if (results.length > 0) {
+            if (!quiet) {
+                console.log(`\nResults for pattern '${searchPattern}':\n`);
+                printTable(results);
             }
-            console.log("Error messages (if any) were printed to console.");
-        } catch (e) {
-            console.error(`Fatal error: ${(e as Error).message}`);
-            process.exit(1);
+            if (output) { // Check if output is not an empty string
+                writeParagraphsToFile(results, output, folder);
+            }
+        } else {
+            console.log(`The pattern '${searchPattern}' was not found in any file.`);
         }
-    }
-});
 
-if (import.meta.main) {
-    run(cli, process.argv.slice(2));
+        console.log(`\nFiles scanned: ${filesScanned}`);
+        console.log(`Total matches: ${totalMatches}`);
+        console.log(`Elapsed Time: ${elapsed.toFixed(2)} seconds`);
+        if (output && results.length > 0) {
+            console.log(`Output written to: ${output}`);
+        }
+    } catch (e) {
+        console.error(`Fatal error: ${(e as Error).message}`);
+        process.exit(1);
+    }
 }
+
+main();

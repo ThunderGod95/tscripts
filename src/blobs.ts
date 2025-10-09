@@ -1,14 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-// --- CONFIGURATION ---
-const SOURCE_DIRECTORY = 'C:/Users/tarun/CodingProjects/nt/translations/TheMirrorLegacy/translations';
-const DESTINATION_DIRECTORY = 'C:/Users/tarun/CodingProjects/nt/translations/TheMirrorLegacy/translations/merged';
+const SOURCE_DIRECTORY = 'C:/Users/tarun/Translations/TheMirrorLegacy/translations';
+const DESTINATION_DIRECTORY = 'C:/Users/tarun/Translations/TheMirrorLegacy/translations/merged';
 const FILES_PER_CHUNK = 50;
 
-/**
- * Merges Markdown files from a source folder sequentially into chunked files.
- */
 async function mergeFilesSequentially() {
     try {
         fs.mkdirSync(DESTINATION_DIRECTORY, { recursive: true });
@@ -41,7 +37,7 @@ async function mergeFilesSequentially() {
     // 2. Sort the files numerically. This is the key change.
     console.log("Sorting files numerically...");
     filesToMerge.sort((a, b) => {
-        const numA = parseInt(a, 10); // Extracts the number from filenames like "1.md", "10.md"
+        const numA = parseInt(a, 10);
         const numB = parseInt(b, 10);
         return numA - numB;
     });
@@ -65,7 +61,7 @@ async function mergeFilesSequentially() {
             const fileContent = await Bun.file(sourceFilePath).text();
 
             writer.write(fileContent);
-            writer.write(`\n\n\n\n`); // Use MD comment for separator
+            writer.write(`\n\n\n\n`);
             mergedCount++;
         }
         await writer.end();

@@ -1,75 +1,58 @@
-// Run this script from your project's root (e.g., using `ts-node yourScript.ts`)
-
 import * as fs from 'fs';
 import * as path from 'path';
-import type { GlossaryEntry } from "./types"; // Assuming this type is { cn: string, en: string, ... }
+import type { GlossaryEntry } from "./types";
 
-// --- Configuration ---
-// The path to your JSON file
-const GLOSSARY_FILE_PATH = "C:\\Users\\tarun\\CodingProjects\\nt\\translations\\TheMirrorLegacy\\assets\\glossary.json";
-// --- End Configuration ---
+const GLOSSARY_FILE_PATH = "C:\\Users\\tarun\\Translations\\TheMirrorLegacy\\assets\\glossary.json";
 
-/**
- * Cleans the glossary data by removing exact duplicates
- * and reports any conflicts.
- */
+
 function cleanGlossary() {
     console.log(`Loading glossary from: ${GLOSSARY_FILE_PATH}`);
 
     let glossaryData: GlossaryEntry[];
     let fileContent: string;
 
-    // --- 1. Read Original File ---
     try {
         fileContent = fs.readFileSync(GLOSSARY_FILE_PATH, 'utf-8');
         glossaryData = JSON.parse(fileContent);
-    } catch (error) {
+    } catch (error: any) {
         console.error(`Error reading file: ${error.message}`);
         console.error("Script aborted. No files were changed.");
         return;
     }
 
-    // --- 2. Create Backup ---
     try {
         const dir = path.dirname(GLOSSARY_FILE_PATH);
         const ext = path.extname(GLOSSARY_FILE_PATH);
         const base = path.basename(GLOSSARY_FILE_PATH, ext);
-        const backupPath = path.join(dir, `${base}.bak${ext}`); // e.g., glossary.bak.json
+        const backupPath = path.join(dir, `${base}.bak${ext}`);
 
         console.log(`Creating backup at: ${backupPath}`);
-        // Write the original raw content to the backup file
         fs.writeFileSync(backupPath, fileContent, 'utf-8');
         console.log("Backup created successfully. ✅");
-    } catch (error) {
+    } catch (error: any) {
         console.error(`FATAL: Error creating backup: ${error.message}`);
         console.error("Script aborted to prevent data loss. No files were changed.");
-        return; // Stop the script if backup fails
+        return;
     }
 
     const originalCount = glossaryData.length;
 
-    // Maps for processing
     const seenCnMap = new Map<string, string>();
     const conflicts = new Map<string, Set<string>>();
     const cleanedData: GlossaryEntry[] = [];
     let exactDuplicatesRemoved = 0;
 
-    // --- 3. Main Processing Logic ---
     for (const entry of glossaryData) {
         const { cn, en } = entry;
         const firstEnSeen = seenCnMap.get(cn);
 
         if (!firstEnSeen) {
-            // Case 1: First time seeing this 'cn'.
             seenCnMap.set(cn, en);
             cleanedData.push(entry);
         } else {
-            // Case 2: We have seen this 'cn' before.
             if (firstEnSeen === en) {
-                // Sub-case 2a: Exact duplicate (same 'cn', same 'en').
                 exactDuplicatesRemoved++;
             } else {
-                // Sub-case 2b: Conflict (same 'cn', different 'en').
                 cleanedData.push(entry);
                 let conflictSet = conflicts.get(cn);
                 if (!conflictSet) {
@@ -81,7 +64,6 @@ function cleanGlossary() {
         }
     }
 
-    // --- 4. Report Conflicts ---
     console.log("\n--- CONFLICTS FOUND (Same CN, Different EN) ---");
     if (conflicts.size === 0) {
         console.log("No conflicts found. 👍");
@@ -94,7 +76,6 @@ function cleanGlossary() {
     }
     console.log("-------------------------------------------------");
 
-    // --- 5. Modify Original File ---
     console.log("\n--- FILE MODIFICATION ---");
     if (exactDuplicatesRemoved > 0) {
         try {
@@ -114,5 +95,4 @@ function cleanGlossary() {
     }
 }
 
-// --- Run the script ---
 cleanGlossary();
