@@ -1,9 +1,8 @@
 import prompts from 'prompts';
 import { readdirSync, statSync } from 'fs';
-import { join, basename } from 'path';
+import { join } from 'path';
 import { $ } from 'bun';
 
-// --- Configuration ---
 const BASE_TRANSLATIONS_PATH = 'C:/Users/tarun/Translations';
 const SCRIPTS_PATH = 'C:/Users/tarun/Translations/tscripts/src';
 
@@ -11,14 +10,9 @@ const taskDefinitions = {
     "glossary": { path: join(SCRIPTS_PATH, 'rules.ts') },
     "find": { path: join(SCRIPTS_PATH, 'finder.ts') },
     "replace": { path: join(SCRIPTS_PATH, 'replace.ts') },
-    "code": {} // Special task for editing other scripts
+    "code": {}
 };
 
-// --- Helper Functions ---
-
-/**
- * Scans the base translations directory and asks the user to select a project.
- */
 async function selectProject(): Promise<string | null> {
     try {
         const directories = readdirSync(BASE_TRANSLATIONS_PATH)
@@ -43,9 +37,6 @@ async function selectProject(): Promise<string | null> {
     }
 }
 
-/**
- * Displays a menu of available tasks for the user to choose from.
- */
 async function showTaskMenu(): Promise<string | null> {
     const menuItems = Object.keys(taskDefinitions).sort();
     const response = await prompts({
@@ -57,9 +48,6 @@ async function showTaskMenu(): Promise<string | null> {
     return response.taskName || null;
 }
 
-/**
- * Prompts the user for task-specific arguments.
- */
 async function getTaskArguments(selectedTask: string): Promise<string[] | null> {
     switch (selectedTask) {
         case "find": {
@@ -112,18 +100,15 @@ async function getTaskArguments(selectedTask: string): Promise<string[] | null> 
         }
 
         default:
-            return []; // No args needed for tasks like 'glossary'
+            return [];
     }
 }
-
-// --- Main Execution Logic ---
 
 async function main() {
     let taskName: string | null = null;
     let remainingArgs: string[] = [];
     let scriptToEdit: string | null = null;
 
-    // 1. Select the project first
     const projectName = await selectProject();
     if (!projectName) {
         console.warn('🟡 No project selected. Exiting.');
@@ -132,8 +117,6 @@ async function main() {
     console.log(`\n✅ Project set to: ${projectName}`);
     const projectTranslationsPath = join(BASE_TRANSLATIONS_PATH, projectName, 'translations');
 
-
-    // 2. Determine the task and arguments (from CLI args or interactive menu)
     const cliArgs = process.argv.slice(2);
 
     if (cliArgs.length > 0) {
@@ -152,17 +135,29 @@ async function main() {
             remainingArgs = cliArgs.slice(1);
         }
     } else {
-        taskName = await showTaskMenu();
-        if (taskName) {
-            const args = await getTaskArguments(taskName);
-            if (args === null) {
-                console.warn('🟡 Task aborted. Exiting.');
-                return;
-            }
-            if (taskName === 'code') {
-                scriptToEdit = args[0] ?? null;
-            } else {
-                remainingArgs = args;
+        const { runDefault } = await prompts({
+            type: 'confirm',
+            name: 'runDefault',
+            message: "Default task is 'glossary'. Run it now?",
+            initial: true
+        });
+
+        if (runDefault) {
+            taskName = 'glossary';
+            remainingArgs = [];
+        } else {
+            taskName = await showTaskMenu();
+            if (taskName) {
+                const args = await getTaskArguments(taskName);
+                if (args === null) {
+                    console.warn('🟡 Task aborted. Exiting.');
+                    return;
+                }
+                if (taskName === 'code') {
+                    scriptToEdit = args[0] ?? null;
+                } else {
+                    remainingArgs = args;
+                }
             }
         }
     }
@@ -172,7 +167,6 @@ async function main() {
         return;
     }
 
-    // 3. Execute the selected task
     console.log(`\n🚀 Attempting to execute task: ${taskName}`);
 
     try {
@@ -198,14 +192,12 @@ async function main() {
             const scriptPath = scriptDef.path;
             const finalArgs = [];
 
-            // Add project-specific arguments for each script
             switch (taskName) {
                 case 'glossary':
                     finalArgs.push('--project', projectName, ...remainingArgs);
                     break;
                 case 'find':
                 case 'replace':
-                    // These scripts take a full folder path
                     finalArgs.push('--folder', projectTranslationsPath, ...remainingArgs);
                     break;
                 default:
