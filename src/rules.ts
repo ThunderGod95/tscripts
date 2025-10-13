@@ -168,7 +168,7 @@ function openInVSCode(filePath: string): Promise<void> {
     return new Promise((resolve) => {
         const command = `code "${filePath}"`;
 
-        exec(command, (error, stdout, stderr) => {
+        exec(command, (error, _stdout, _stderr) => {
             if (error) {
                 console.warn(`\n⚠️  Could not open file in VS Code. Is the 'code' command in your system's PATH?`);
                 resolve();
@@ -178,17 +178,6 @@ function openInVSCode(filePath: string): Promise<void> {
             resolve();
         });
     });
-}
-
-function askQuestion(query: string): Promise<string> {
-    const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout,
-    });
-    return new Promise(resolve => rl.question(query, ans => {
-        rl.close();
-        resolve(ans.trim());
-    }));
 }
 
 async function verifyChapterNumber(
@@ -218,17 +207,10 @@ async function verifyChapterNumber(
     console.log(`Found chapter in current file: ${actualChapterNumber}.`);
 
     if (actualChapterNumber !== expectedChapterNumber) {
-        console.warn(`\n⚠️  Chapter number mismatch!`);
-        const answer = await askQuestion('Do you want to automatically correct this? (y/n): ');
-
-        if (answer.toLowerCase() === 'y') {
-            const correctedFirstLine = firstLine.replace(actualChapterNumber.toString(), expectedChapterNumber.toString());
-            const correctedText = chapterText.replace(firstLine, correctedFirstLine);
-            console.log('✅ Chapter number corrected in text.');
-            return { correctedText, chapterNumber: expectedChapterNumber };
-        } else {
-            throw new Error('Aborted by user due to chapter number mismatch.');
-        }
+        const correctedFirstLine = firstLine.replace(actualChapterNumber.toString(), expectedChapterNumber.toString());
+        const correctedText = chapterText.replace(firstLine, correctedFirstLine);
+        console.log('✅ Chapter number corrected in text.');
+        return { correctedText, chapterNumber: expectedChapterNumber };
     }
 
     console.log('✅ Chapter number is correct.');
