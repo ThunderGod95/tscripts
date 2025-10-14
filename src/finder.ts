@@ -5,11 +5,6 @@ import { hideBin } from 'yargs/helpers';
 
 export type Result = [string, number, string];
 
-// --- NO CHANGES TO THE CORE LOGIC FUNCTIONS ---
-// The functions findFirstWordInstanceInFolder, findFirstWordInstance,
-// findWordAllInstances, printTable, and writeParagraphsToFile
-// remain exactly the same as before.
-
 export function findFirstWordInstanceInFolder(folderPath: string, searchPattern: string, useRegex = false): number | null {
     if (!existsSync(folderPath) || !statSync(folderPath).isDirectory()) {
         throw new Error(`The folder path '${folderPath}' does not exist or is not a directory.`);
@@ -66,10 +61,11 @@ export function findFirstWordInstance(content: Map<number, string>, searchPatter
     return null;
 }
 
-export function findWordAllInstances(folderPath: string, searchPattern: string, useRegex = false): { results: Result[]; filesScanned: number; totalMatches: number } {
+export function findWordAllInstances(folderPath: string, searchPattern: string, useRegex = false): { results: Result[]; filesScanned: number; totalMatches: number, firstMatchFile: string | null } {
     const results: Result[] = [];
     let filesScanned = 0;
     let totalMatches = 0;
+    let firstMatchFile: string | null = null;
     let regex: RegExp | null = null;
 
     if (!existsSync(folderPath) || !statSync(folderPath).isDirectory()) {
@@ -100,11 +96,21 @@ export function findWordAllInstances(folderPath: string, searchPattern: string, 
                 if (useRegex && regex) {
                     if (regex.test(line ?? "")) {
                         results.push([fname, lineNum, (line ?? "").trimEnd()]);
+
+                        if (firstMatchFile === null) {
+                            firstMatchFile = basename(fname);
+                        }
+
                         totalMatches++;
                     }
                 } else {
                     if (line?.toLowerCase().includes(searchPattern.toLowerCase())) {
                         results.push([fname, lineNum, line.trimEnd()]);
+
+                        if (firstMatchFile === null) {
+                            firstMatchFile = basename(fname);
+                        }
+
                         totalMatches++;
                     }
                 }
@@ -115,7 +121,7 @@ export function findWordAllInstances(folderPath: string, searchPattern: string, 
         }
     }
 
-    return { results, filesScanned, totalMatches };
+    return { results, filesScanned, totalMatches, firstMatchFile };
 }
 
 function printTable(results: Result[]): void {
@@ -166,14 +172,12 @@ function writeParagraphsToFile(results: Result[], outputFile: string, folderPath
             }
         }
 
-        writeFileSync(outputFile, outputLines.join("\n"), { encoding: "utf-8" });
+        writeFileSync(outputFile, outputLines.join("\n"), { encoding: "utf-8", flag: "w+" });
 
     } catch (e) {
         console.error(`Error: Failed to write to ${outputFile}: ${(e as Error).message}`);
     }
 }
-
-// --- NEW YARGS-BASED MAIN FUNCTION ---
 
 async function main() {
     const argv = await yargs(hideBin(process.argv))
@@ -216,7 +220,7 @@ async function main() {
 
     try {
         const start = Date.now();
-        const { results, filesScanned, totalMatches } = findWordAllInstances(folder, searchPattern, regex);
+        const { results, filesScanned, totalMatches, firstMatchFile } = findWordAllInstances(folder, searchPattern, regex);
         const elapsed = (Date.now() - start) / 1000;
 
         if (results.length > 0) {
@@ -225,13 +229,16 @@ async function main() {
                 printTable(results);
             }
             if (output) { // Check if output is not an empty string
-                writeParagraphsToFile(results, output, folder);
+                const outputPath = join(process.cwd(), output.replaceAll(/['"]/g, "")); // Remove quotes if any
+                console.log(`\nWriting results to ${outputPath}...\n`);
+                writeParagraphsToFile(results, outputPath, folder);
             }
         } else {
             console.log(`The pattern '${searchPattern}' was not found in any file.`);
         }
 
         console.log(`\nFiles scanned: ${filesScanned}`);
+        console.log(`First match found in file: ${firstMatchFile !== null ? firstMatchFile : 'N/A'}`);
         console.log(`Total matches: ${totalMatches}`);
         console.log(`Elapsed Time: ${elapsed.toFixed(2)} seconds`);
         if (output && results.length > 0) {
