@@ -13,6 +13,7 @@ const taskDefinitions = {
     "find": { path: join(SCRIPTS_PATH, 'finder.ts') },
     "replace": { path: join(SCRIPTS_PATH, 'replace.ts') },
     "runner": { path: join(SCRIPTS_PATH, 'run.ts') },
+    "schema": { path: join(SCRIPTS_PATH, 'schema.ts') },
     "code": {}
 };
 
@@ -193,7 +194,7 @@ async function main() {
     }
 
 
-    // Modified: Skip project selection for 'code' and 'task' tasks
+    // Modified: Skip project selection for 'code' task
     if (taskName === 'code') {
         console.log(`\n🚀 Attempting to execute task: ${taskName}`);
         console.time(`✅ Task '${taskName}' finished successfully.`);
@@ -261,6 +262,9 @@ async function main() {
             case 'find':
             case 'replace':
                 finalArgs.push('--folder', projectTranslationsPath, ...remainingArgs);
+                break;
+            case 'schema':
+                finalArgs.push('--path', join(BASE_TRANSLATIONS_PATH, projectName), ...remainingArgs);
                 break;
             default:
                 finalArgs.push(...remainingArgs);

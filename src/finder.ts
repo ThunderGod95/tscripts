@@ -3,9 +3,19 @@ import { join, extname, basename } from "path";
 import yargs from 'yargs/yargs';
 import { hideBin } from 'yargs/helpers';
 
-export type Result = [string, number, string];
+export interface SearchResult {
+    fileName: string;
+    lineNumber: number;
+    lineContent: string;
+}
 
-export function findFirstWordInstanceInFolder(folderPath: string, searchPattern: string, useRegex = false): number | null {
+export interface SearchOutput {
+    results: SearchResult[];
+    firstMatchFile: string | null;
+    fileFirstLines: Map<string, string>;
+}
+
+function getSortedMarkdownFiles(folderPath: string): string[] {
     if (!existsSync(folderPath) || !statSync(folderPath).isDirectory()) {
         throw new Error(`The folder path '${folderPath}' does not exist or is not a directory.`);
     }
@@ -15,45 +25,54 @@ export function findFirstWordInstanceInFolder(folderPath: string, searchPattern:
     files.sort((a, b) => {
         const aNum = parseInt(basename(a, ".md"));
         const bNum = parseInt(basename(b, ".md"));
-        if (isNaN(aNum) || isNaN(bNum)) return a.localeCompare(b);
-        return aNum - bNum;
+        return (isNaN(aNum) || isNaN(bNum)) ? a.localeCompare(b) : aNum - bNum;
     });
 
-    const mdFileContents = new Map<number, string>();
-
-    for (const file of files) {
-        const filePath = join(folderPath, file);
-
-        try {
-            const content = readFileSync(filePath, { encoding: "utf-8" });
-            mdFileContents.set(parseInt(basename(filePath, ".md")), content);
-        } catch (e) {
-            console.error(`Error: Failed to read ${filePath}: ${(e as Error).message}`);
-            continue;
-        }
-    }
-
-    return findFirstWordInstance(mdFileContents, searchPattern, useRegex);
+    return files;
 }
 
-export function findFirstWordInstance(content: Map<number, string>, searchPattern: string, useRegex = false): number | null {
-    let regex: RegExp | null = null;
+function getFileContentsWithNumbers(folderPath: string): Map<number, string> {
+    const fileContentsByNumber = new Map<number, string>();
+    const files = getSortedMarkdownFiles(folderPath);
 
+    files.forEach(file => {
+        const baseName = basename(file, ".md");
+        const fileNumber = parseInt(baseName, 10);
+
+        if (!isNaN(fileNumber)) {
+            const content = readFileSync(file, "utf-8").toLowerCase();
+            fileContentsByNumber.set(fileNumber, content);
+        } else {
+            console.log(`Skipping non-numeric file: ${file}`);
+        }
+    });
+
+    return fileContentsByNumber;
+}
+
+function createMatcher(searchPattern: string, useRegex: boolean): (line: string) => boolean {
     if (useRegex) {
-        regex = new RegExp(searchPattern, "i");
+        const regex = new RegExp(searchPattern, "i");
+        return (line: string) => regex.test(line);
     }
+    const lowerCasePattern = searchPattern.toLowerCase();
+    return (line: string) => line.toLowerCase().includes(lowerCasePattern);
+}
 
-    for (const [fileNum, fileContent] of content.entries()) {
-        const lines = (fileContent ?? "").split(/\r?\n/);
+export function findFirstFileWithMatchInFolder(folderPath: string, searchPattern: string, useRegex = false): number | null {
+    const fileContentsByNumber = getFileContentsWithNumbers(folderPath);
+    return findFirstFileWithMatch(fileContentsByNumber, searchPattern, useRegex);
+}
+
+export function findFirstFileWithMatch(fileContentsByNumber: Map<number, string>, searchPattern: string, useRegex = false): number | null {
+    const lineMatches = createMatcher(searchPattern, useRegex);
+
+    for (const [fileNumber, content] of fileContentsByNumber.entries()) {
+        const lines = content.split(/\r?\n/);
+
         for (const line of lines) {
-            if (useRegex && regex) {
-                if (regex.test(line ?? "")) {
-                    return fileNum;
-                }
-            } else {
-                if (line?.toLowerCase().includes(searchPattern.toLowerCase())) {
-                    return fileNum;
-                }
+            if (lineMatches(line)) {
+                return fileNumber;
             }
         }
     }
@@ -61,123 +80,91 @@ export function findFirstWordInstance(content: Map<number, string>, searchPatter
     return null;
 }
 
-export function findWordAllInstances(folderPath: string, searchPattern: string, useRegex = false): { results: Result[]; filesScanned: number; totalMatches: number, firstMatchFile: string | null } {
-    const results: Result[] = [];
-    let filesScanned = 0;
-    let totalMatches = 0;
+
+export function searchInFolder(folderPath: string, searchPattern: string, useRegex = false): SearchOutput {
+    const files = getSortedMarkdownFiles(folderPath);
+    const results: SearchResult[] = [];
+    const fileFirstLines = new Map<string, string>();
     let firstMatchFile: string | null = null;
-    let regex: RegExp | null = null;
+    const lineMatches = createMatcher(searchPattern, useRegex);
 
-    if (!existsSync(folderPath) || !statSync(folderPath).isDirectory()) {
-        throw new Error(`The folder path '${folderPath}' does not exist or is not a directory.`);
-    }
-
-    if (useRegex) {
-        regex = new RegExp(searchPattern, "i");
-    }
-
-    const files = readdirSync(folderPath).filter(f => extname(f) === ".md");
-    files.sort((a, b) => {
-        const aNum = parseInt(basename(a, ".md"));
-        const bNum = parseInt(basename(b, ".md"));
-        if (isNaN(aNum) || isNaN(bNum)) return a.localeCompare(b);
-        return aNum - bNum;
-    });
-
-    for (const fname of files) {
-        const filePath = join(folderPath, fname);
-        filesScanned++;
+    for (const fileName of files) {
+        const filePath = join(folderPath, fileName);
         try {
             const content = readFileSync(filePath, { encoding: "utf-8" });
             const lines = content.split(/\r?\n/);
+
+            fileFirstLines.set(fileName, lines[0] ?? "");
+
+            let fileHasMatch = false;
             for (let i = 0; i < lines.length; i++) {
-                const line = lines[i];
-                const lineNum = i + 1;
-                if (useRegex && regex) {
-                    if (regex.test(line ?? "")) {
-                        results.push([fname, lineNum, (line ?? "").trimEnd()]);
-
-                        if (firstMatchFile === null) {
-                            firstMatchFile = basename(fname);
-                        }
-
-                        totalMatches++;
-                    }
-                } else {
-                    if (line?.toLowerCase().includes(searchPattern.toLowerCase())) {
-                        results.push([fname, lineNum, line.trimEnd()]);
-
-                        if (firstMatchFile === null) {
-                            firstMatchFile = basename(fname);
-                        }
-
-                        totalMatches++;
-                    }
+                const line = lines[i] ?? "";
+                if (lineMatches(line)) {
+                    results.push({
+                        fileName: fileName,
+                        lineNumber: i + 1,
+                        lineContent: line.trimEnd(),
+                    });
+                    fileHasMatch = true;
                 }
+            }
+
+            if (fileHasMatch && firstMatchFile === null) {
+                firstMatchFile = fileName;
             }
         } catch (e) {
             console.error(`Error: Failed to read ${filePath}: ${(e as Error).message}`);
-            continue;
         }
     }
 
-    return { results, filesScanned, totalMatches, firstMatchFile };
+    return { results, firstMatchFile, fileFirstLines };
 }
 
-function printTable(results: Result[]): void {
+
+function printTable(results: SearchResult[]): void {
     if (results.length === 0) return;
 
-    const fileColWidth = Math.max(...results.map(r => r[0].length), "File".length);
-    const lineColWidth = Math.max(...results.map(r => r[1].toString().length), "Line".length);
-    const textColWidth = Math.max(...results.map(r => r[2].length), "Text".length);
+    const fileColWidth = Math.max(...results.map(r => r.fileName.length), "File".length);
+    const lineColWidth = Math.max(...results.map(r => r.lineNumber.toString().length), "Line".length);
+    const textColWidth = Math.max(...results.map(r => r.lineContent.length), "Text".length);
 
     const header = `${"File".padEnd(fileColWidth)} | ${"Line".padEnd(lineColWidth)} | ${"Text".padEnd(textColWidth)}`;
     console.log(header);
     console.log("-".repeat(header.length));
 
-    for (const [fname, lineNum, lineContent] of results) {
-        console.log(`${fname.padEnd(fileColWidth)} | ${lineNum.toString().padEnd(lineColWidth)} | ${lineContent.padEnd(textColWidth)}`);
+    for (const { fileName, lineNumber, lineContent } of results) {
+        console.log(`${fileName.padEnd(fileColWidth)} | ${lineNumber.toString().padEnd(lineColWidth)} | ${lineContent.padEnd(textColWidth)}`);
     }
 }
 
-function writeParagraphsToFile(results: Result[], outputFile: string, folderPath: string): void {
+function writeParagraphsToFile(results: SearchResult[], fileFirstLines: Map<string, string>, outputFile: string): void {
     try {
-        const resultsByFile = new Map<string, Result[]>();
-        for (const result of results) {
-            const fname = result[0]; // Filename
-            if (!resultsByFile.has(fname)) {
-                resultsByFile.set(fname, []);
+        const resultsByFile = results.reduce((acc, result) => {
+            const { fileName } = result;
+            if (!acc.has(fileName)) {
+                acc.set(fileName, []);
             }
-            resultsByFile.get(fname)!.push(result);
-        }
+            acc.get(fileName)!.push(result);
+            return acc;
+        }, new Map<string, SearchResult[]>());
 
         const outputLines: string[] = [];
 
-        for (const [fname, fileResults] of resultsByFile.entries()) {
-            const filePath = join(folderPath, fname);
-            let firstLine = "";
-            try {
-                const content = readFileSync(filePath, { encoding: "utf-8" });
-                firstLine = content.split(/\r?\n/)[0] ?? "";
-            } catch (e) {
-                console.error(`Error: Failed to read ${filePath} to get first line: ${(e as Error).message}`);
-                firstLine = `[Error reading first line of ${fname}]`;
-            }
+        for (const [fileName, fileResults] of resultsByFile.entries()) {
+            const firstLine = fileFirstLines.get(fileName) ?? `[Error retrieving first line of ${fileName}]`;
             outputLines.push(firstLine);
 
-            for (const result of fileResults) {
-                const lineNum = result[1];
-                const lineContent = result[2];
-                outputLines.push(`[${lineNum}] ${lineContent}\n`);
+            for (const { lineNumber, lineContent } of fileResults) {
+                outputLines.push(`[${lineNumber}] ${lineContent}\n`);
             }
         }
 
         writeFileSync(outputFile, outputLines.join("\n"), { encoding: "utf-8", flag: "w+" });
-
     } catch (e) {
         console.error(`Error: Failed to write to ${outputFile}: ${(e as Error).message}`);
     }
 }
+
 
 async function main() {
     const argv = await yargs(hideBin(process.argv))
@@ -190,7 +177,7 @@ async function main() {
         .option('folder', {
             alias: 'f',
             type: 'string',
-            description: 'Folder to scan (provided by runner script)',
+            description: 'Folder to scan',
             demandOption: true,
         })
         .option('regex', {
@@ -202,7 +189,6 @@ async function main() {
             alias: 'o',
             type: 'string',
             description: 'Output file to write paragraphs to (optional)',
-            default: '',
         })
         .option('quiet', {
             alias: 'q',
@@ -219,28 +205,26 @@ async function main() {
     const { folder, regex, output, quiet } = argv;
 
     try {
-        const start = Date.now();
-        const { results, filesScanned, totalMatches, firstMatchFile } = findWordAllInstances(folder, searchPattern, regex);
-        const elapsed = (Date.now() - start) / 1000;
+        const { results, firstMatchFile, fileFirstLines } = searchInFolder(folder, searchPattern, regex);
 
         if (results.length > 0) {
             if (!quiet) {
                 console.log(`\nResults for pattern '${searchPattern}':\n`);
                 printTable(results);
             }
-            if (output) { // Check if output is not an empty string
-                const outputPath = join(process.cwd(), output.replaceAll(/['"]/g, "")); // Remove quotes if any
-                console.log(`\nWriting results to ${outputPath}...\n`);
-                writeParagraphsToFile(results, outputPath, folder);
+            if (output) {
+                const outputPath = join(process.cwd(), output.replaceAll(/['"]/g, ""));
+                console.log(`\nWriting results to ${outputPath}...`);
+                writeParagraphsToFile(results, fileFirstLines, outputPath);
             }
         } else {
             console.log(`The pattern '${searchPattern}' was not found in any file.`);
         }
 
-        console.log(`\nFiles scanned: ${filesScanned}`);
-        console.log(`First match found in file: ${firstMatchFile !== null ? firstMatchFile : 'N/A'}`);
-        console.log(`Total matches: ${totalMatches}`);
-        console.log(`Elapsed Time: ${elapsed.toFixed(2)} seconds`);
+        console.log(`\n---\nSummary:\n---`);
+        console.log(`First match found in file: ${firstMatchFile ?? 'N/A'}`);
+        console.log(`Total matches: ${results.length}`);
+
         if (output && results.length > 0) {
             console.log(`Output written to: ${output}`);
         }
@@ -250,4 +234,6 @@ async function main() {
     }
 }
 
-main();
+if (import.meta.main) {
+    main();
+}
