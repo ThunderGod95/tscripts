@@ -3,10 +3,8 @@ import { readdirSync, statSync } from 'fs';
 import { join } from 'path';
 import { $ } from 'bun';
 
-
 const BASE_TRANSLATIONS_PATH = 'C:/Users/tarun/Translations';
 const SCRIPTS_PATH = 'C:/Users/tarun/Translations/tscripts/src';
-
 
 const taskDefinitions = {
     "glossary": { path: join(SCRIPTS_PATH, 'rules.ts') },
@@ -17,7 +15,6 @@ const taskDefinitions = {
     "code": {}
 };
 
-
 async function selectProject(): Promise<string | null> {
     try {
         const directories = readdirSync(BASE_TRANSLATIONS_PATH)
@@ -26,28 +23,33 @@ async function selectProject(): Promise<string | null> {
                 return fileStat.isDirectory() && file !== 'tscripts';
             });
 
-
         if (directories.length === 0) {
             console.error('❌ No project directories found in:', BASE_TRANSLATIONS_PATH);
             return null;
         }
 
+        let projectName: string | null = null;
 
-        const response = await prompts({
-            type: 'select',
-            name: 'projectName',
-            message: 'Select a translation project:',
-            choices: directories.map(dir => ({ title: dir, value: dir })),
-        });
+        if (directories.length === 1) {
+            projectName = directories[0]!;
+            console.log(`\n✅ Only one project found. Auto-selecting: ${projectName}`);
+        } else {
+            const response = await prompts({
+                type: 'select',
+                name: 'projectName',
+                message: 'Select a translation project:',
+                choices: directories.map(dir => ({ title: dir, value: dir })),
+            });
 
+            projectName = response.projectName || null;
+        }
 
-        return response.projectName || null;
+        return projectName;
     } catch (error) {
         console.error('❌ Error reading project directories:', error);
         return null;
     }
 }
-
 
 async function showTaskMenu(): Promise<string | null> {
     const menuItems = Object.keys(taskDefinitions).filter(t => t !== 'runner').sort();
@@ -58,10 +60,8 @@ async function showTaskMenu(): Promise<string | null> {
         choices: menuItems.map(task => ({ title: task, value: task })),
     });
 
-
     return response.taskName || null;
 }
-
 
 async function getTaskArguments(selectedTask: string): Promise<string[] | null> {
     switch (selectedTask) {
@@ -73,9 +73,7 @@ async function getTaskArguments(selectedTask: string): Promise<string[] | null> 
                 validate: (value: string) => value.length > 0 ? true : 'Search pattern cannot be empty.'
             });
 
-
             if (!searchTerm) return null;
-
 
             const { otherFlags } = await prompts({
                 type: 'text',
@@ -83,10 +81,8 @@ async function getTaskArguments(selectedTask: string): Promise<string[] | null> 
                 message: "Enter additional flags (optional) (e.g., -o 'file.txt' --regex)"
             });
 
-
             return [searchTerm, ...(otherFlags?.split(' ').filter(Boolean) || [])];
         }
-
 
         case "replace": {
             const response = await prompts([
@@ -102,13 +98,11 @@ async function getTaskArguments(selectedTask: string): Promise<string[] | null> 
                 }
             ]);
 
-
             const args: string[] = [];
             if (response.search) args.push('--search_pattern', response.search);
             if (response.replace) args.push('--replacement', response.replace);
             return args;
         }
-
 
         case "code": {
             const scriptsToEdit = Object.keys(taskDefinitions).filter(t => t !== 'code');
@@ -119,25 +113,20 @@ async function getTaskArguments(selectedTask: string): Promise<string[] | null> 
                 choices: scriptsToEdit.map(s => ({ title: s, value: s })),
             });
 
-
             return response.scriptToEdit ? [response.scriptToEdit] : null;
         }
-
 
         default:
             return [];
     }
 }
 
-
 async function main() {
     let taskName: string | null = null;
     let remainingArgs: string[] = [];
     let scriptToEdit: string | null = null;
 
-
     const cliArgs = process.argv.slice(2);
-
 
     if (cliArgs.length > 0) {
         taskName = cliArgs[0]!;
@@ -145,7 +134,6 @@ async function main() {
             console.error(`❌ Error: Invalid task name '${taskName}'.`);
             return;
         }
-
 
         if (taskName === 'code') {
             scriptToEdit = cliArgs[1] ?? null;
@@ -157,48 +145,32 @@ async function main() {
             remainingArgs = cliArgs.slice(1);
         }
     } else {
-        const { runDefault } = await prompts({
-            type: 'confirm',
-            name: 'runDefault',
-            message: "Default task is 'glossary'. Run it now?",
-            initial: true
-        });
+        taskName = await showTaskMenu();
+        if (taskName) {
+            const args = await getTaskArguments(taskName);
 
+            if (args === null) {
+                console.warn('🟡 Task aborted. Exiting.');
+                return;
+            }
 
-        if (runDefault) {
-            taskName = 'glossary';
-            remainingArgs = [];
-        } else {
-            taskName = await showTaskMenu();
-            if (taskName) {
-                const args = await getTaskArguments(taskName);
-                if (args === null) {
-                    console.warn('🟡 Task aborted. Exiting.');
-                    return;
-                }
-
-
-                if (taskName === 'code') {
-                    scriptToEdit = args[0] ?? null;
-                } else {
-                    remainingArgs = args;
-                }
+            if (taskName === 'code') {
+                scriptToEdit = args[0] ?? null;
+            } else {
+                remainingArgs = args;
             }
         }
-    }
 
+    }
 
     if (!taskName) {
         console.warn('🟡 No valid task selected. Exiting.');
         return;
     }
 
-
-    // Modified: Skip project selection for 'code' task
     if (taskName === 'code') {
         console.log(`\n🚀 Attempting to execute task: ${taskName}`);
-        console.time(`✅ Task '${taskName}' finished successfully.`);
-
+        console.time(`Task '${taskName}' finished successfully.`);
 
         try {
             if (taskName === 'code') {
@@ -207,26 +179,23 @@ async function main() {
                     return;
                 }
 
-
                 const scriptDef = taskDefinitions[scriptToEdit as keyof typeof taskDefinitions];
                 if (!('path' in scriptDef) || typeof scriptDef.path !== 'string') {
                     console.error(`❌ Script '${scriptToEdit}' does not have a valid path to open.`);
                     return;
                 }
 
-
                 const scriptPath = scriptDef.path;
                 console.log(`✏️ Opening '${scriptToEdit}' in VS Code...`);
                 await $`code ${scriptPath}`.quiet();
             }
 
-            console.timeEnd(`✅ Task '${taskName}' finished successfully.`);
+            console.timeEnd(`Task '${taskName}' finished successfully.`);
         } catch (error) {
             console.error(`\n❌ Task '${taskName}' failed:`, error);
         }
         return;
     }
-
 
     const projectName = await selectProject();
     if (!projectName) {
@@ -234,14 +203,11 @@ async function main() {
         return;
     }
 
-
     console.log(`\n✅ Project set to: ${projectName}`);
     const projectTranslationsPath = join(BASE_TRANSLATIONS_PATH, projectName, 'translations');
 
-
-    console.time(`✅ Task '${taskName}' finished successfully.`);
+    console.time(`Task '${taskName}' finished successfully.`);
     console.log(`\n🚀 Attempting to execute task: ${taskName}`);
-
 
     try {
         const scriptDef = taskDefinitions[taskName as keyof typeof taskDefinitions];
@@ -250,10 +216,8 @@ async function main() {
             return;
         }
 
-
         const scriptPath = scriptDef.path;
         const finalArgs = [];
-
 
         switch (taskName) {
             case 'glossary':
@@ -270,10 +234,8 @@ async function main() {
                 finalArgs.push(...remainingArgs);
         }
 
-
         const argString = finalArgs.join(' ');
-        if (argString) console.log(`  With args: ${argString}`);
-
+        if (argString) console.log(`With args: ${argString}`);
 
         const proc = Bun.spawn(['bun', 'run', scriptPath, ...finalArgs], {
             stdin: 'inherit',
@@ -281,18 +243,15 @@ async function main() {
             stderr: 'inherit',
         });
 
-
         const exitCode = await proc.exited;
         if (exitCode !== 0) {
             throw new Error(`Process exited with code ${exitCode}`);
         }
 
-
-        console.timeEnd(`✅ Task '${taskName}' finished successfully.`);
+        console.timeEnd(`Task '${taskName}' finished successfully.`);
     } catch (error) {
         console.error(`\n❌ Task '${taskName}' failed:`, error);
     }
 }
-
 
 main();
