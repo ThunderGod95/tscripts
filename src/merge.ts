@@ -4,7 +4,6 @@ import type { GlossaryEntry } from "./types";
 
 const GLOSSARY_FILE_PATH = "C:\\Users\\tarun\\Translations\\TheMirrorLegacy\\assets\\glossary.json";
 
-
 function cleanGlossary() {
     console.log(`Loading glossary from: ${GLOSSARY_FILE_PATH}`);
 
