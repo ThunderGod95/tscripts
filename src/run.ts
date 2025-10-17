@@ -1,18 +1,8 @@
 import prompts from 'prompts';
 import { readdirSync, statSync } from 'fs';
-import { join } from 'path';
+import path, { join } from 'path';
 import { $ } from 'bun';
 
-// --- Configuration ---
-// Dynamically determine paths based on the script's location.
-// Assumes the folder structure is:
-// /<some_folder>/Translations/
-//   ├── project-A/
-//   ├── project-B/
-//   └── tscripts/
-//       └── src/
-//           ├── (this script)
-//           └── (other task scripts)
 const SCRIPT_DIR = join(import.meta.dir);
 const TSCRIPTS_DIR = join(SCRIPT_DIR, '..');
 const BASE_TRANSLATIONS_PATH = join(TSCRIPTS_DIR, '..');
@@ -27,6 +17,9 @@ const config = {
         "glossary": { path: join(SCRIPT_DIR, 'rules.ts') },
         "find": { path: join(SCRIPT_DIR, 'finder.ts') },
         "replace": { path: join(SCRIPT_DIR, 'replace.ts') },
+        "dist": { path: join(SCRIPT_DIR, 'dist.ts') },
+        "schema": { path: join(SCRIPT_DIR, 'schema.ts') },
+        "merge": { path: join(SCRIPT_DIR, 'merge.ts') },
         "runner": { path: join(SCRIPT_DIR, 'run.ts') },
         "code": {},
     } as const,
@@ -133,7 +126,7 @@ async function handleCodeTask(args: string[]) {
         const taskDefinition = config.tasks[scriptToEdit];
 
         if ('path' in taskDefinition && typeof taskDefinition.path === 'string') {
-            pathToOpen = taskDefinition.path; // No '!' needed, it's now type-safe
+            pathToOpen = taskDefinition.path;
             openMessage = `✏️ Opening script '${scriptToEdit}' in VS Code...`;
         }
     }
@@ -155,6 +148,8 @@ async function handleStandardTask(task: Exclude<TaskName, 'code'>, initialArgs: 
     }
     console.log(`\n✅ Project set to: ${projectName}`);
 
+    const projectPath = join(config.paths.base, projectName);
+
     const taskDefinition = config.tasks[task];
     if (!taskDefinition.path) {
         logError(`Task '${task}' does not have a valid script path to run.`);
@@ -162,17 +157,40 @@ async function handleStandardTask(task: Exclude<TaskName, 'code'>, initialArgs: 
     }
 
     console.log(`\n🚀 Executing task: ${task}`);
-    const projectTranslationsPath = join(config.paths.base, projectName, 'translations');
     const finalArgs: string[] = [];
 
     switch (task) {
-        case 'glossary':
-            finalArgs.push('--project', projectName, ...initialArgs);
+        case 'glossary': {
+            const assetsPath = join(projectPath, 'assets');
+            const translationsPath = join(projectPath, 'translations');
+            finalArgs.push('--assets-path', assetsPath, '--translations-path', translationsPath, ...initialArgs);
             break;
+        }
+        case 'dist': {
+            const translationsDir = join(projectPath, "translations");
+            const assetsDir = join(projectPath, "assets");
+            const distDir = join(projectPath, "dist");
+            finalArgs.push('--translations-dir', translationsDir, '--assets-dir', assetsDir, '--dist-dir', distDir, ...initialArgs);
+            break;
+        }
         case 'find':
-        case 'replace':
+        case 'replace': {
+            const projectTranslationsPath = join(projectPath, 'translations');
             finalArgs.push('--folder', projectTranslationsPath, ...initialArgs);
             break;
+        }
+        case 'schema': {
+            const glossaryPath = join(projectPath, 'assets', 'glossary.json');
+            const markdownFolder = join(projectPath, 'translations');
+            const outputPath = join(projectPath, 'assets', 'glossary-updated.json');
+            finalArgs.push('--glossary-path', glossaryPath, '--markdown-folder', markdownFolder, '--output-path', outputPath, ...initialArgs);
+            break;
+        }
+        case 'merge': {
+            const glossaryFile = join(projectPath, 'assets', 'glossary.json');
+            finalArgs.push('--glossary-file', glossaryFile, ...initialArgs);
+            break;
+        }
         default:
             finalArgs.push(...initialArgs);
     }

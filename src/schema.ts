@@ -4,13 +4,11 @@ import { findFirstFileWithMatch } from "./finder";
 import yargs from 'yargs/yargs';
 import { hideBin } from 'yargs/helpers';
 
-function updateGlossary(projectPath: string) {
-    const glossaryPath = path.join(projectPath, "assets", "glossary.json");
-    const markdownFolderPath = path.join(projectPath, "translations");
-    const outputPath = path.join(projectPath, "assets", "glossary-updated.json");
-
+function updateGlossary(glossaryPath: string, markdownFolderPath: string, outputPath: string) {
     if (!existsSync(glossaryPath) || !existsSync(markdownFolderPath) || !statSync(markdownFolderPath).isDirectory()) {
-        console.error("Error: The provided path does not contain the required 'assets/glossary.json' or 'translations' directory.");
+        console.error("Error: One or more provided paths are invalid.");
+        console.error(`Glossary: ${glossaryPath}`);
+        console.error(`Markdown Folder: ${markdownFolderPath}`);
         return;
     }
 
@@ -72,23 +70,25 @@ function updateGlossary(projectPath: string) {
 
 async function main() {
     const argv = await yargs(hideBin(process.argv))
-        .usage("Usage: bun run schema.ts <path>")
-        .positional("path", {
-            describe: "Path to translation project.",
-            demandOption: true,
-            type: "string"
+        .option('glossary-path', {
+            type: 'string',
+            description: 'Path to the source glossary.json file',
+            demandOption: true
+        })
+        .option('markdown-folder', {
+            type: 'string',
+            description: 'Path to the folder containing markdown translation files',
+            demandOption: true
+        })
+        .option('output-path', {
+            type: 'string',
+            description: 'Path to write the updated glossary file',
+            demandOption: true
         })
         .help()
         .parse();
 
-    const projectPath = argv.path as string;
-
-    if (!projectPath || !existsSync(projectPath) || !statSync(projectPath).isDirectory()) {
-        console.error("Error: Please provide a valid path to the translation project directory.");
-        return;
-    }
-
-    updateGlossary(projectPath);
+    updateGlossary(argv.glossaryPath, argv.markdownFolder, argv.outputPath);
 }
 
 main().catch(err => {

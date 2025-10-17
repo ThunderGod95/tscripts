@@ -217,21 +217,17 @@ async function verifyChapterNumber(
     return { correctedText: chapterText, chapterNumber: actualChapterNumber };
 }
 
-
-const BASE_TRANSLATIONS_PATH = 'C:\\Users\\tarun\\Translations';
-
-async function processAndCopy(projectName: string): Promise<void> {
-    const MAIN_PATH = path.join(BASE_TRANSLATIONS_PATH, projectName, 'assets');
-    const TRANSLATION_PATH = path.join(BASE_TRANSLATIONS_PATH, projectName, 'translations');
-
+async function processAndCopy(assetsPath: string, translationsPath: string): Promise<void> {
     try {
-        console.log(`Processing project: ${projectName}`);
+        console.log(`Processing project paths:`);
+        console.log(`- Assets: ${assetsPath}`);
+        console.log(`- Translations: ${translationsPath}`);
 
         console.log('Loading Chinese segmenter dictionary...');
         const jieba = Jieba.withDict(dict);
         console.log('Dictionary loaded.');
 
-        const glossaryData = readFileSync(path.resolve(MAIN_PATH, 'glossary.json'), 'utf-8');
+        const glossaryData = readFileSync(path.resolve(assetsPath, 'glossary.json'), 'utf-8');
         const glossaryList: GlossaryEntry[] = JSON.parse(glossaryData);
 
         const glossaryMap: Record<string, GlossaryEntry> = {};
@@ -244,11 +240,11 @@ async function processAndCopy(projectName: string): Promise<void> {
         const glossaryTerms = Object.keys(glossaryMap);
         console.log(`Loaded ${Object.keys(glossaryMap).length} main glossary entries.`);
 
-        const originalChapterText = readFileSync(path.resolve(MAIN_PATH, 'cr_ch.txt'), 'utf-8');
+        const originalChapterText = readFileSync(path.resolve(assetsPath, 'cr_ch.txt'), 'utf-8');
         console.log('Loaded chapter file.');
 
-        const { correctedText, chapterNumber } = await verifyChapterNumber(originalChapterText, TRANSLATION_PATH);
-        let chapterText = correctedText; // Use the corrected text for all subsequent operations
+        const { correctedText, chapterNumber } = await verifyChapterNumber(originalChapterText, translationsPath);
+        let chapterText = correctedText;
 
         console.log('\n--- Starting Glossary Search ---');
         console.time('Phase 1 (Chinese Exact)');
@@ -301,7 +297,7 @@ async function processAndCopy(projectName: string): Promise<void> {
             .filter(line => line)
             .join('\n');
 
-        const promptTemplate = readFileSync(path.resolve(MAIN_PATH, 'translation_prompt.md'), 'utf-8');
+        const promptTemplate = readFileSync(path.resolve(assetsPath, 'translation_prompt.md'), 'utf-8');
         const finalPromptString =
             `${promptTemplate}\n\n` +
             `**Glossary:**\n` +
@@ -317,7 +313,7 @@ async function processAndCopy(projectName: string): Promise<void> {
         console.log(`Total glossary entries: ${foundEntriesList.length}`);
 
 
-        const newFilePath = path.join(TRANSLATION_PATH, `${chapterNumber}.md`);
+        const newFilePath = path.join(translationsPath, `${chapterNumber}.md`);
 
         if (existsSync(newFilePath)) {
             console.warn(`⚠️  Warning: File '${path.basename(newFilePath)}' already exists. Skipping creation.`);
@@ -341,15 +337,20 @@ async function processAndCopy(projectName: string): Promise<void> {
 
 async function main() {
     const argv = await yargs(hideBin(process.argv))
-        .option('project', {
+        .option('assets-path', {
             type: 'string',
-            description: 'The name of the project directory to process',
+            description: 'The absolute path to the project assets directory',
+            demandOption: true,
+        })
+        .option('translations-path', {
+            type: 'string',
+            description: 'The absolute path to the project translations directory',
             demandOption: true,
         })
         .help()
         .parse();
 
-    await processAndCopy(argv.project);
+    await processAndCopy(argv.assetsPath, argv.translationsPath);
 }
 
 main().catch(error => {

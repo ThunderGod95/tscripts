@@ -1,17 +1,17 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import yargs from 'yargs/yargs';
+import { hideBin } from 'yargs/helpers';
 import type { GlossaryEntry } from "./types";
 
-const GLOSSARY_FILE_PATH = "C:\\Users\\tarun\\Translations\\TheMirrorLegacy\\assets\\glossary.json";
-
-function cleanGlossary() {
-    console.log(`Loading glossary from: ${GLOSSARY_FILE_PATH}`);
+function cleanGlossary(glossaryFilePath: string) {
+    console.log(`Loading glossary from: ${glossaryFilePath}`);
 
     let glossaryData: GlossaryEntry[];
     let fileContent: string;
 
     try {
-        fileContent = fs.readFileSync(GLOSSARY_FILE_PATH, 'utf-8');
+        fileContent = fs.readFileSync(glossaryFilePath, 'utf-8');
         glossaryData = JSON.parse(fileContent);
     } catch (error: any) {
         console.error(`Error reading file: ${error.message}`);
@@ -20,9 +20,9 @@ function cleanGlossary() {
     }
 
     try {
-        const dir = path.dirname(GLOSSARY_FILE_PATH);
-        const ext = path.extname(GLOSSARY_FILE_PATH);
-        const base = path.basename(GLOSSARY_FILE_PATH, ext);
+        const dir = path.dirname(glossaryFilePath);
+        const ext = path.extname(glossaryFilePath);
+        const base = path.basename(glossaryFilePath, ext);
         const backupPath = path.join(dir, `${base}.bak${ext}`);
 
         console.log(`Creating backup at: ${backupPath}`);
@@ -79,9 +79,9 @@ function cleanGlossary() {
     if (exactDuplicatesRemoved > 0) {
         try {
             const jsonData = JSON.stringify(cleanedData, null, 2);
-            fs.writeFileSync(GLOSSARY_FILE_PATH, jsonData, 'utf-8');
+            fs.writeFileSync(glossaryFilePath, jsonData, 'utf-8');
 
-            console.log(`Successfully modified ${path.basename(GLOSSARY_FILE_PATH)}. 📝`);
+            console.log(`Successfully modified ${path.basename(glossaryFilePath)}. 📝`);
             console.log(`Original entries: ${originalCount}`);
             console.log(`Exact duplicates removed: ${exactDuplicatesRemoved}`);
             console.log(`New total entries: ${cleanedData.length}`);
@@ -94,4 +94,17 @@ function cleanGlossary() {
     }
 }
 
-cleanGlossary();
+async function main() {
+    const argv = await yargs(hideBin(process.argv))
+        .option('glossary-file', {
+            type: 'string',
+            description: 'The absolute path to the glossary.json file',
+            demandOption: true,
+        })
+        .help()
+        .parse();
+
+    cleanGlossary(argv.glossaryFile);
+}
+
+main();
