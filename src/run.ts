@@ -30,6 +30,12 @@ const config = {
 
 type TaskName = keyof typeof config.tasks;
 
+function logTaskTime(startTime: number, endTime: number) {
+    const durationMs = endTime - startTime;
+    const durationS = (durationMs / 1000).toFixed(2);
+    console.log(`\n✨ Task execution time: ${durationS}s`);
+}
+
 interface Cache {
     lastProject?: string;
 }
@@ -39,8 +45,9 @@ async function readCache(): Promise<Cache> {
         return {};
     }
     try {
-        return await Bun.file(CACHE_FILE_PATH).json();
-    } catch (error: any) {
+        const file = Bun.file(CACHE_FILE_PATH);
+        return await file.json<Cache>();
+    } catch (error) {
         logWarning(`Could not read cache file: ${error.message}`);
         return {};
     }
@@ -48,8 +55,8 @@ async function readCache(): Promise<Cache> {
 
 async function writeCache(cache: Cache): Promise<void> {
     try {
-        await Bun.write(CACHE_FILE_PATH, JSON.stringify(cache, null, 4));
-    } catch (error: any) {
+        await Bun.write(CACHE_FILE_PATH, JSON.stringify(cache, null, 2));
+    } catch (error) {
         logError(`Could not write to cache file: ${error.message}`);
     }
 }
@@ -193,7 +200,10 @@ async function handleCodeTask(args: string[]) {
 
     try {
         console.log(openMessage);
+        const startTime = performance.now();
         await $`code ${pathToOpen}`.quiet();
+        const endTime = performance.now();
+        logTaskTime(startTime, endTime);
         console.log('✅ Task finished.');
     } catch (error) {
         logError(`Failed to open VS Code. Is 'code' command in your PATH?`, error);
@@ -213,11 +223,15 @@ async function handleInitTask(initialArgs: string[]) {
     console.log(`   With args: ${finalArgs.join(' ')}`);
 
     try {
+        const startTime = performance.now();
         const proc = Bun.spawn(['bun', 'run', taskDefinition.path, ...finalArgs], {
             stdio: ['inherit', 'inherit', 'inherit'],
         });
 
         const exitCode = await proc.exited;
+        const endTime = performance.now();
+        logTaskTime(startTime, endTime);
+
         if (exitCode !== 0) {
             throw new Error(`Process exited with code ${exitCode}`);
         }
@@ -243,9 +257,7 @@ async function handleStandardTask(task: Exclude<TaskName, 'code' | 'init'>, init
         return;
     }
 
-    console.log(`\n🚀 Executing task: ${task}`);
     const finalArgs: string[] = [];
-
     switch (task) {
         case 'glossary': {
             const assetsPath = join(projectPath, 'assets');
@@ -282,16 +294,21 @@ async function handleStandardTask(task: Exclude<TaskName, 'code' | 'init'>, init
             finalArgs.push(...initialArgs);
     }
 
+    console.log(`\n🚀 Executing task: ${task}`);
     if (finalArgs.length > 0) {
         console.log(`   With args: ${finalArgs.join(' ')}`);
     }
 
     try {
+        const startTime = performance.now();
         const proc = Bun.spawn(['bun', 'run', taskDefinition.path, ...finalArgs], {
             stdio: ['inherit', 'inherit', 'inherit'],
         });
 
         const exitCode = await proc.exited;
+        const endTime = performance.now();
+        logTaskTime(startTime, endTime);
+
         if (exitCode !== 0) {
             throw new Error(`Process exited with code ${exitCode}`);
         }
@@ -302,58 +319,50 @@ async function handleStandardTask(task: Exclude<TaskName, 'code' | 'init'>, init
 }
 
 async function main() {
-    const startTime = performance.now();
-    try {
-        const cliArgs = process.argv.slice(2);
-        let taskName: TaskName | null = null;
-        let taskArgs: string[] | null = [];
+    const cliArgs = process.argv.slice(2);
+    let taskName: TaskName | null = null;
+    let taskArgs: string[] | null = [];
 
-        if (cliArgs.length > 0) {
-            const task = cliArgs[0] as TaskName;
-            if (!Object.keys(config.tasks).includes(task)) {
-                logError(`Invalid task name '${task}'.`);
-                return;
-            }
-            taskName = task;
-            taskArgs = cliArgs.slice(1);
-        } else {
-            const { selectedTask } = await prompts({
-                type: 'select',
-                name: 'selectedTask',
-                message: 'Select a task to run:',
-                choices: Object.keys(config.tasks)
-                    .filter(t => t !== 'runner')
-                    .sort()
-                    .map(t => ({ title: t, value: t })),
-            });
-            taskName = selectedTask as TaskName || null;
-
-            if (taskName) {
-                taskArgs = await getTaskArguments(taskName);
-            }
-        }
-
-        if (!taskName) {
-            logWarning('No task selected. Exiting.');
+    if (cliArgs.length > 0) {
+        const task = cliArgs[0] as TaskName;
+        if (!Object.keys(config.tasks).includes(task)) {
+            logError(`Invalid task name '${task}'.`);
             return;
         }
-        if (taskArgs === null) {
-            logWarning('Task aborted. Exiting.');
-            return;
-        }
+        taskName = task;
+        taskArgs = cliArgs.slice(1);
+    } else {
+        const { selectedTask } = await prompts({
+            type: 'select',
+            name: 'selectedTask',
+            message: 'Select a task to run:',
+            choices: Object.keys(config.tasks)
+                .filter(t => t !== 'runner')
+                .sort()
+                .map(t => ({ title: t, value: t })),
+        });
+        taskName = selectedTask as TaskName || null;
 
-        if (taskName === 'code') {
-            await handleCodeTask(taskArgs);
-        } else if (taskName === 'init') {
-            await handleInitTask(taskArgs);
-        } else {
-            await handleStandardTask(taskName as Exclude<TaskName, 'code' | 'init'>, taskArgs);
+        if (taskName) {
+            taskArgs = await getTaskArguments(taskName);
         }
-    } finally {
-        const endTime = performance.now();
-        const durationMs = endTime - startTime;
-        const durationS = (durationMs / 1000).toFixed(2);
-        console.log(`\n✨ Total time taken: ${durationS}s`);
+    }
+
+    if (!taskName) {
+        logWarning('No task selected. Exiting.');
+        return;
+    }
+    if (taskArgs === null) {
+        logWarning('Task aborted. Exiting.');
+        return;
+    }
+
+    if (taskName === 'code') {
+        await handleCodeTask(taskArgs);
+    } else if (taskName === 'init') {
+        await handleInitTask(taskArgs);
+    } else {
+        await handleStandardTask(taskName as Exclude<TaskName, 'code' | 'init'>, taskArgs);
     }
 }
 
