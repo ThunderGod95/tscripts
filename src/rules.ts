@@ -247,12 +247,11 @@ async function processAndCopy(
         );
         console.log("Loaded chapter file.");
 
-        // const { correctedText, chapterNumber } = await verifyChapterNumber(
-        //   originalChapterText,
-        //   translationsPath,
-        // );
-        const chapterNumber = extractChapterNumberFromText(originalChapterText);
-        let chapterText = originalChapterText; // Should be correctedText, but keeping temporarily.
+        const { correctedText, chapterNumber } = await verifyChapterNumber(
+            originalChapterText,
+            translationsPath,
+        );
+        let chapterText = correctedText;
 
         console.warn("Warning: Skipping chapter number verification for now.");
 
