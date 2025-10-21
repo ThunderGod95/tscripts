@@ -3,6 +3,7 @@ import path from "path";
 import { findFirstFileWithMatch } from "./finder";
 import yargs from 'yargs/yargs';
 import { hideBin } from 'yargs/helpers';
+import type { GlossaryEntry } from "./types";
 
 function updateGlossary(glossaryPath: string, markdownFolderPath: string, outputPath: string) {
     if (!existsSync(glossaryPath) || !existsSync(markdownFolderPath) || !statSync(markdownFolderPath).isDirectory()) {
@@ -41,9 +42,9 @@ function updateGlossary(glossaryPath: string, markdownFolderPath: string, output
     console.log(`Loaded ${fileContentsByNumber.size} markdown files into memory.`);
     let missingCount = 0;
 
-    glossaryData.forEach((entry: any) => {
+    glossaryData.forEach((entry: GlossaryEntry) => {
         const phrase = entry.en || "";
-        const fileNum = findFirstFileWithMatch(fileContentsByNumber, phrase, false);
+        const fileNum = entry.file || findFirstFileWithMatch(fileContentsByNumber, phrase, false);
 
         if (fileNum === null) {
             missingCount++;
