@@ -253,10 +253,9 @@ async function processAndCopy(
         );
         let chapterText = correctedText;
 
-        console.warn("Warning: Skipping chapter number verification for now.");
-
         console.log("\n--- Starting Glossary Search ---");
         console.time("Phase 1 (Chinese Exact)");
+
         const exactMatchesDetails = ahoCorasickFindAll(glossaryTerms, chapterText);
         const foundExactInText = new Set(
             exactMatchesDetails.map((match) => match.term),
