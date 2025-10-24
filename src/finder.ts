@@ -31,7 +31,7 @@ function getSortedMarkdownFiles(folderPath: string): string[] {
     return files;
 }
 
-function getFileContentsWithNumbers(folderPath: string): Map<number, string> {
+function getFileContentsWithNumbers(folderPath: string, startNum?: number, endNum?: number): Map<number, string> {
     const fileContentsByNumber = new Map<number, string>();
     const files = getSortedMarkdownFiles(folderPath);
 
@@ -40,8 +40,13 @@ function getFileContentsWithNumbers(folderPath: string): Map<number, string> {
         const fileNumber = parseInt(baseName, 10);
 
         if (!isNaN(fileNumber)) {
-            const content = readFileSync(file, "utf-8").toLowerCase();
-            fileContentsByNumber.set(fileNumber, content);
+            const inStartRange = (startNum === undefined) || (fileNumber >= startNum);
+            const inEndRange = (endNum === undefined) || (fileNumber <= endNum);
+
+            if (inStartRange && inEndRange) {
+                const content = readFileSync(join(folderPath, file), "utf-8").toLowerCase();
+                fileContentsByNumber.set(fileNumber, content);
+            }
         } else {
             console.log(`Skipping non-numeric file: ${file}`);
         }
@@ -59,8 +64,8 @@ function createMatcher(searchPattern: string, useRegex: boolean): (line: string)
     return (line: string) => line.toLowerCase().includes(lowerCasePattern);
 }
 
-export function findFirstFileWithMatchInFolder(folderPath: string, searchPattern: string, useRegex = false): number | null {
-    const fileContentsByNumber = getFileContentsWithNumbers(folderPath);
+export function findFirstFileWithMatchInFolder(folderPath: string, searchPattern: string, useRegex = false, startNum?: number, endNum?: number): number | null {
+    const fileContentsByNumber = getFileContentsWithNumbers(folderPath, startNum, endNum);
     return findFirstFileWithMatch(fileContentsByNumber, searchPattern, useRegex);
 }
 
@@ -81,14 +86,25 @@ export function findFirstFileWithMatch(fileContentsByNumber: Map<number, string>
 }
 
 
-export function searchInFolder(folderPath: string, searchPattern: string, useRegex = false): SearchOutput {
+export function searchInFolder(folderPath: string, searchPattern: string, useRegex = false, startNum?: number, endNum?: number): SearchOutput {
     const files = getSortedMarkdownFiles(folderPath);
     const results: SearchResult[] = [];
     const fileFirstLines = new Map<string, string>();
     let firstMatchFile: string | null = null;
     const lineMatches = createMatcher(searchPattern, useRegex);
 
-    for (const fileName of files) {
+    let filesToSearch = files;
+    if (startNum !== undefined || endNum !== undefined) {
+        filesToSearch = files.filter(file => {
+            const fileNumber = parseInt(basename(file, ".md"), 10);
+            if (isNaN(fileNumber)) return false; // Exclude non-numeric files when range is specified
+            const inStartRange = (startNum === undefined) || (fileNumber >= startNum);
+            const inEndRange = (endNum === undefined) || (fileNumber <= endNum);
+            return inStartRange && inEndRange;
+        });
+    }
+
+    for (const fileName of filesToSearch) {
         const filePath = join(folderPath, fileName);
         try {
             const content = readFileSync(filePath, { encoding: "utf-8" });
@@ -196,16 +212,24 @@ async function main() {
             description: 'Suppress table output, only show summary',
             default: false,
         })
+        .option('start', {
+            type: 'number',
+            description: 'Starting file number for range search',
+        })
+        .option('end', {
+            type: 'number',
+            description: 'Ending file number for range search',
+        })
         .demandCommand(1, 'Error: You must provide a search pattern.')
         .help()
         .alias('help', 'h')
         .parse();
 
     const searchPattern = argv._[0] as string;
-    const { folder, regex, output, quiet } = argv;
+    const { folder, regex, output, quiet, start, end } = argv;
 
     try {
-        const { results, firstMatchFile, fileFirstLines } = searchInFolder(folder, searchPattern, regex);
+        const { results, firstMatchFile, fileFirstLines } = searchInFolder(folder, searchPattern, regex, start, end);
 
         if (results.length > 0) {
             if (!quiet) {

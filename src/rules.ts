@@ -215,11 +215,8 @@ async function processAndCopy(
     translationsPath: string,
 ): Promise<void> {
     try {
-        console.log(`Processing project paths:`);
-        console.log(`- Assets: ${assetsPath}`);
-        console.log(`- Translations: ${translationsPath}`);
 
-        console.log("Loading Chinese segmenter dictionary...");
+        console.log("\n\nLoading Chinese segmenter dictionary...");
         const jieba = Jieba.withDict(dict);
         console.log("Dictionary loaded.");
 

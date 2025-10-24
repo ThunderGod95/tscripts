@@ -45,9 +45,8 @@ async function readCache(): Promise<Cache> {
         return {};
     }
     try {
-        const file = Bun.file(CACHE_FILE_PATH);
-        return await file.json<Cache>();
-    } catch (error) {
+        return await Bun.file(CACHE_FILE_PATH).json();
+    } catch (error: any) {
         logWarning(`Could not read cache file: ${error.message}`);
         return {};
     }
@@ -56,7 +55,7 @@ async function readCache(): Promise<Cache> {
 async function writeCache(cache: Cache): Promise<void> {
     try {
         await Bun.write(CACHE_FILE_PATH, JSON.stringify(cache, null, 2));
-    } catch (error) {
+    } catch (error: any) {
         logError(`Could not write to cache file: ${error.message}`);
     }
 }
@@ -127,12 +126,30 @@ async function getTaskArguments(task: TaskName): Promise<string[] | null> {
             });
             if (!searchTerm) return null;
 
+            const { startNum } = await prompts({
+                type: 'number',
+                name: 'startNum',
+                message: 'Enter start file number (optional)',
+            });
+
+            const { endNum } = await prompts({
+                type: 'number',
+                name: 'endNum',
+                message: 'Enter end file number (optional)',
+            });
+
             const { otherFlags } = await prompts({
                 type: 'text',
                 name: 'otherFlags',
                 message: "Enter additional flags (optional, e.g., -o 'out.txt')",
             });
-            return [searchTerm, ...(otherFlags?.split(' ').filter(Boolean) || [])];
+
+            const args: string[] = [searchTerm];
+            if (typeof startNum === 'number') args.push('--start', startNum.toString());
+            if (typeof endNum === 'number') args.push('--end', endNum.toString());
+            args.push(...(otherFlags?.split(' ').filter(Boolean) || []));
+
+            return args;
         }
 
         case "replace": {
