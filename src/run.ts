@@ -22,6 +22,7 @@ const config = {
         "dist": { path: join(SCRIPT_DIR, 'dist.ts') },
         "schema": { path: join(SCRIPT_DIR, 'schema.ts') },
         "merge": { path: join(SCRIPT_DIR, 'merge.ts') },
+        "separate": { path: join(SCRIPT_DIR, 'separate.ts') },
         "init": { path: join(SCRIPT_DIR, 'init.ts') },
         "runner": { path: join(SCRIPT_DIR, 'run.ts') },
         "code": {},
@@ -150,6 +151,18 @@ async function getTaskArguments(task: TaskName): Promise<string[] | null> {
             args.push(...(otherFlags?.split(' ').filter(Boolean) || []));
 
             return args;
+        }
+
+        case "separate": {
+            const { startFile } = await prompts({
+                type: 'text',
+                name: 'startFile',
+                message: 'Enter the name of the file containing all chapters (e.g., 90.md)',
+                validate: (value: string) => (value.trim().endsWith('.md') && value.trim().length > 3) || 'Must be a valid .md file name.',
+            });
+            if (!startFile) return null;
+
+            return ['--file', startFile.trim()];
         }
 
         case "replace": {
@@ -290,7 +303,8 @@ async function handleStandardTask(task: Exclude<TaskName, 'code' | 'init'>, init
             break;
         }
         case 'find':
-        case 'replace': {
+        case 'replace':
+        case 'separate': {
             const projectTranslationsPath = join(projectPath, 'translations');
             finalArgs.push('--folder', projectTranslationsPath, ...initialArgs);
             break;
