@@ -1,8 +1,7 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
-import AdmZip from "adm-zip";
 import { mkdir } from "fs/promises";
-import { basename, join, sep } from "path";
+import { basename, join } from "path";
 import { existsSync } from "fs";
 
 const colors = {
@@ -136,7 +135,8 @@ async function combineToPDFsOrEPUBs(
 
     const creationPromises = separationInformation.map(async (sepInfo) => {
         try {
-            const outputPath = join(outputSubDir, `${sepInfo.name}.${format}`);
+            const safeFileName = sepInfo.name.replace(/[\\/:*?"<>|]/g, "-");
+            const outputPath = join(outputSubDir, `${safeFileName}.${format}`);
             const inputFiles: string[] = [];
 
             for (let i = sepInfo.filestart; i <= sepInfo.fileend; i++) {
@@ -171,47 +171,48 @@ async function combineToPDFsOrEPUBs(
 
             const currentDate = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
 
-            const metadataLines = [
-                "---",
-                `title: ${baseTitle} (${sepInfo.name})`,
-                `author: ${author}`,
-                `translator: ${translator}`,
-                `date: ${currentDate}`,
-                `rights: '${rights}'`,
-                "lang: en-US",
-                `belongs-to-collection: ${baseTitle}`,
-                "collection-type: series",
+            const metadataArgs = [
+                `--metadata=title:${sepInfo.name}`,
+                `--metadata=author:${author}`,
+                `--metadata=translator:${translator}`,
+                `--metadata=date:${currentDate}`,
+                `--metadata=rights:${rights}`,
+                `--metadata=lang:en-US`,
+                `--metadata=belongs-to-collection:${baseTitle}`,
+                `--metadata=collection-type:series`,
             ];
 
             if (sepInfo.position !== undefined) {
-                metadataLines.push(`group-position: ${sepInfo.position}`);
+                metadataArgs.push(`--metadata=group-position:${sepInfo.position}`);
             }
-
-            if (normalizedCoverPath) {
-                metadataLines.push(`cover-image: ${normalizedCoverPath}`);
-            }
-            metadataLines.push("---");
-
-            const metadataBlock = metadataLines.join("\n");
 
             const fileContents = await Promise.all(
                 inputFiles.map((path) => Bun.file(path).text()),
             );
-            const combinedFileContent = fileContents.join("\n\n----\n\n----\n\n");
 
-            const combinedContent = metadataBlock + "\n\n" + combinedFileContent;
+            const combinedFileContent = fileContents.join("\n\n\\pagebreak\n\n");
+
+            let contentPrefix = "";
+            if (format === "pdf" && normalizedCoverPath) {
+                contentPrefix = `![Cover](${normalizedCoverPath})\n\n\\pagebreak\n\n`;
+            }
+
+            const combinedContent = contentPrefix + combinedFileContent;
 
             // --- END: Metadata and Cover Image Logic ---
 
             const normalizedOutputPath = outputPath.replace(/\\/g, "/");
-            const normalizedResourcePath = translationsDir.replace(/\\/g, "/");
+            const normalizedTranslationsPath = translationsDir.replace(/\\/g, "/");
+            const normalizedAssetsPath = assetsDir.replace(/\\/g, "/");
 
             const pandocArgs = [
                 "--from",
                 "markdown-yaml_metadata_block",
-                "--file-scope",
+                ...metadataArgs,
                 "--resource-path",
-                normalizedResourcePath,
+                normalizedTranslationsPath,
+                "--resource-path",
+                normalizedAssetsPath,
                 "-o",
                 normalizedOutputPath,
                 "--toc",
