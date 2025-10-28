@@ -44,7 +44,7 @@ function updateGlossary(glossaryPath: string, markdownFolderPath: string, output
 
     glossaryData.forEach((entry: GlossaryEntry) => {
         const phrase = entry.en || "";
-        const fileNum = entry.file || findFirstFileWithMatch(fileContentsByNumber, phrase, false);
+        const fileNum = findFirstFileWithMatch(fileContentsByNumber, phrase, false);
 
         if (fileNum === null) {
             missingCount++;
