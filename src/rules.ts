@@ -354,7 +354,8 @@ async function processAndCopy(
     const allFoundTerms = new Set([
         ...foundExactInText,
         ...foundFuzzyInText,
-        ...foundNGramInText,
+        // TODO: Fix this
+        // ...foundNGramInText,
     ]);
     console.log(
         `\nTotal unique glossary terms after all phases: ${allFoundTerms.size}`,
