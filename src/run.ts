@@ -16,7 +16,7 @@ const config = {
         tscriptsFolder: TSCRIPTS_DIR,
     },
     tasks: {
-        "glossary": { path: join(SCRIPT_DIR, 'rules.ts') },
+        "glossary": { path: join(SCRIPT_DIR, 'glossary.ts') },
         "find": { path: join(SCRIPT_DIR, 'finder.ts') },
         "replace": { path: join(SCRIPT_DIR, 'replace.ts') },
         "dist": { path: join(SCRIPT_DIR, 'dist.ts') },

@@ -15,7 +15,7 @@ const CHAPTER_FILE = "cr_ch.txt";
 const PROMPT_FILE = "translation_prompt.md";
 
 const FUZZY_SEARCH_THRESHOLD = 75;
-const NGRAM_SEARCH_MAX_LENGTH = 4; // Max length of term to check for subsequences
+const NGRAM_SEARCH_MAX_LENGTH = 2; // Max length of term to check for subsequences
 
 // Matches a full chapter block, starting with "第...章" on a line
 // and ending with "(本章完)" on a line.
@@ -115,11 +115,6 @@ function chineseNGramSearch(
         const cleanTerm = originalToCleanMap.get(originalTerm);
         if (!cleanTerm || cleanTerm.length === 0) continue;
 
-        if (cleanText.includes(cleanTerm)) {
-            foundTerms.add(originalTerm);
-            continue;
-        }
-
         const termChars = [...cleanTerm];
         if (termChars.length <= NGRAM_SEARCH_MAX_LENGTH) {
             try {
@@ -127,7 +122,7 @@ function chineseNGramSearch(
                     char.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
                 );
 
-                const subsequenceRegex = new RegExp(escapedTermChars.join(".*?"), "u"); // Using .*? for non-greedy match
+                const subsequenceRegex = new RegExp(escapedTermChars.join(".*?"), "u");
 
                 if (subsequenceRegex.test(cleanText)) {
                     foundTerms.add(originalTerm);
@@ -354,8 +349,7 @@ async function processAndCopy(
     const allFoundTerms = new Set([
         ...foundExactInText,
         ...foundFuzzyInText,
-        // TODO: Fix this
-        // ...foundNGramInText,
+        ...foundNGramInText,
     ]);
     console.log(
         `\nTotal unique glossary terms after all phases: ${allFoundTerms.size}`,
@@ -365,7 +359,7 @@ async function processAndCopy(
         .sort((a, b) => {
             const aLen = [...(originalToCleanMap.get(a) || "")].length;
             const bLen = [...(originalToCleanMap.get(b) || "")].length;
-            return bLen - aLen || a.localeCompare(b); // Sort by processed length, desc
+            return bLen - aLen || a.localeCompare(b);
         })
         .map((term) => glossaryMap[term]);
 
