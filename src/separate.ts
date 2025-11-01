@@ -34,7 +34,7 @@ async function separateChapters(
     // The `m` flag ensures `^` matches the start of each line.
     const chapterBlocks = combinedContent.split(/(?=^# )/m);
 
-    if (chapterBlocks.length === 0 || chapterBlocks[0].trim() === "") {
+    if (chapterBlocks.length === 0 || chapterBlocks[0]!.trim() === "") {
         console.warn("⚠️  No chapter content found (or file is empty). Exiting.");
         return;
     }
@@ -55,7 +55,7 @@ async function separateChapters(
         }
 
         const firstLine = content.split("\n")[0];
-        const match = firstLine.match(chapterNumberRegex);
+        const match = firstLine!.match(chapterNumberRegex);
 
         if (!match || !match[1]) {
             console.warn(

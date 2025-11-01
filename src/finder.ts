@@ -55,13 +55,36 @@ function getFileContentsWithNumbers(folderPath: string, startNum?: number, endNu
     return fileContentsByNumber;
 }
 
+function escapeRegex(pattern: string): string {
+    return pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function createMatcher(searchPattern: string, useRegex: boolean): (line: string) => boolean {
+    let finalPattern: string;
+
     if (useRegex) {
-        const regex = new RegExp(searchPattern, "i");
-        return (line: string) => regex.test(line);
+        finalPattern = searchPattern;
+    } else {
+        const normalizedSearchPattern = escapeRegex(searchPattern);
+
+        const startsWithWord = /^\w/.test(normalizedSearchPattern);
+        const endsWithWord = /\w$/.test(normalizedSearchPattern);
+
+        const prefix = startsWithWord ? "\\b" : "";
+        const suffix = endsWithWord ? "\\b" : "";
+
+        finalPattern = `${prefix}${normalizedSearchPattern}${suffix}`;
     }
-    const lowerCasePattern = searchPattern.toLowerCase();
-    return (line: string) => line.toLowerCase().includes(lowerCasePattern);
+
+    try {
+        const regex = new RegExp(finalPattern, "i");
+        return (line: string) => regex.test(line);
+
+    } catch (error) {
+        console.error("Invalid regex pattern:", error);
+        // Return a matcher that never matches
+        return () => false;
+    }
 }
 
 export function findFirstFileWithMatchInFolder(folderPath: string, searchPattern: string, useRegex = false, startNum?: number, endNum?: number): number | null {

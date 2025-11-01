@@ -30,9 +30,9 @@ const logger = {
 interface SeparationInformation {
     filestart: number;
     fileend: number;
-    name: string;
-    position: number;
     title: string;
+    position: number;
+    series: string;
     author: string;
     translator: string;
     rights: string;
@@ -61,29 +61,33 @@ async function main() {
         .parse();
 
     const { translationsDir, assetsDir, distDir } = argv;
+
+    logger.info("Starting build...");
+
     const totalBuildTime = performance.now();
-    logger.info(`Starting build...`);
 
-    try {
-        if (!existsSync(translationsDir) || !existsSync(assetsDir)) {
-            throw new Error(
-                `Required directories 'translations' or 'assets' do not exist.`,
-            );
-        }
+    const results = await Promise.allSettled([
+        createPdfs(translationsDir, assetsDir, distDir),
+        createEPUBs(translationsDir, assetsDir, distDir)
+    ]);
 
-        if (!existsSync(distDir)) {
-            await mkdir(distDir, { recursive: true });
-        }
+    const pdfResult = results[0];
+    const epubResult = results[1];
 
-        await createPdfs(translationsDir, assetsDir, distDir);
-        await createEPUBs(translationsDir, assetsDir, distDir);
+    if (pdfResult.status === 'rejected') {
+        logger.error('PDF creation failed.');
+        console.error(pdfResult.reason);
+    }
+    if (epubResult.status === 'rejected') {
+        logger.error('EPUB creation failed.');
+        console.error(epubResult.reason);
+    }
 
-        const duration = ((performance.now() - totalBuildTime) / 1000).toFixed(2);
+    const duration = ((performance.now() - totalBuildTime) / 1000).toFixed(2);
+    if (results.every(r => r.status === 'fulfilled')) {
         logger.success(`Build completed successfully in ${duration}s ✨`);
-    } catch (error) {
-        const duration = ((performance.now() - totalBuildTime) / 1000).toFixed(2);
-        logger.error(`Build failed after ${duration}s.`);
-        console.error(error instanceof Error ? error.message : String(error || ""));
+    } else {
+        logger.error(`Build finished with errors in ${duration}s.`);
         process.exit(1);
     }
 }
@@ -104,148 +108,223 @@ async function createPdfs(
     await combineToPDFsOrEPUBs("pdf", translationsDir, assetsDir, distDir);
 }
 
-async function combineToPDFsOrEPUBs(
-    format: "pdf" | "epub",
-    translationsDir: string,
+
+type BookFormat = "pdf" | "epub";
+
+interface PandocMetadata {
+    metadataArgs: string[];
+    normalizedCoverPath: string | null;
+}
+
+function normalizePath(path: string): string {
+    return path.replace(/\\/g, "/");
+}
+
+async function loadSeparationInfo(
     assetsDir: string,
-    distDir: string,
-) {
-    const timer = performance.now();
+    format: BookFormat,
+): Promise<SeparationInformation[] | null> {
     const separationInformationPath = join(assetsDir, "sep.json");
 
     if (!existsSync(separationInformationPath)) {
         logger.warn(
             `'sep.json' not found. Skipping ${format.toUpperCase()} creation.`,
         );
-        return;
+        return null;
     }
-
-    const separationInformation: SeparationInformation[] = await Bun.file(
-        separationInformationPath,
-    ).json();
-
-    logger.task(
-        `Creating ${format.toUpperCase()} files... (Total: ${separationInformation.length})`,
-    );
-
+    return Bun.file(separationInformationPath).json();
+}
+async function prepareOutputDirectory(
+    distDir: string,
+    format: BookFormat,
+): Promise<string> {
     const outputSubDir = join(distDir, `${format}s`);
     if (!existsSync(outputSubDir)) {
         await mkdir(outputSubDir, { recursive: true });
     }
+    return outputSubDir;
+}
 
-    const creationPromises = separationInformation.map(async (sepInfo) => {
-        try {
-            const safeFileName = sepInfo.name.replace(/[\\/:*?"<>|]/g, "-");
-            const outputPath = join(outputSubDir, `${safeFileName}.${format}`);
-            const inputFiles: string[] = [];
-
-            for (let i = sepInfo.filestart; i <= sepInfo.fileend; i++) {
-                const filePath = join(translationsDir, `${i}.md`);
-                if (!existsSync(filePath)) {
-                    throw new Error(
-                        `Markdown file '${i}.md' does not exist but is required for '${sepInfo.name}'.`,
-                    );
-                }
-                inputFiles.push(filePath);
-            }
-
-            if (inputFiles.length === 0) {
-                logger.warn(`No input files found for '${sepInfo.name}', skipping.`);
-                return;
-            }
-
-            logger.info(`  Building '${basename(outputPath)}'...`);
-
-            // --- START: Metadata and Cover Image Logic ---
-
-            const baseTitle = sepInfo.title;
-            const author = sepInfo.author;
-            const translator = sepInfo.translator;
-            const rights = sepInfo.rights;
-            const coverImageName = sepInfo.image;
-
-            const coverImagePath = join(assetsDir, coverImageName);
-            const normalizedCoverPath = existsSync(coverImagePath)
-                ? coverImagePath.replace(/\\/g, "/")
-                : null;
-
-            const currentDate = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
-
-            const metadataArgs = [
-                `--metadata=title:${sepInfo.name}`,
-                `--metadata=author:${author}`,
-                `--metadata=translator:${translator}`,
-                `--metadata=date:${currentDate}`,
-                `--metadata=rights:${rights}`,
-                `--metadata=lang:en-US`,
-                `--metadata=belongs-to-collection:${baseTitle}`,
-                `--metadata=collection-type:series`,
-            ];
-
-            if (sepInfo.position !== undefined) {
-                metadataArgs.push(`--metadata=group-position:${sepInfo.position}`);
-            }
-
-            const fileContents = await Promise.all(
-                inputFiles.map((path) => Bun.file(path).text()),
-            );
-
-            const combinedFileContent = fileContents.join("\n\n\\pagebreak\n\n");
-
-            let contentPrefix = "";
-            if (format === "pdf" && normalizedCoverPath) {
-                contentPrefix = `![Cover](${normalizedCoverPath})\n\n\\pagebreak\n\n`;
-            }
-
-            const combinedContent = contentPrefix + combinedFileContent;
-
-            // --- END: Metadata and Cover Image Logic ---
-
-            const normalizedOutputPath = outputPath.replace(/\\/g, "/");
-            const normalizedTranslationsPath = translationsDir.replace(/\\/g, "/");
-            const normalizedAssetsPath = assetsDir.replace(/\\/g, "/");
-
-            const pandocArgs = [
-                "--from",
-                "markdown-yaml_metadata_block",
-                ...metadataArgs,
-                "--resource-path",
-                normalizedTranslationsPath,
-                "--resource-path",
-                normalizedAssetsPath,
-                "-o",
-                normalizedOutputPath,
-                "--toc",
-                ...(format === "pdf" ? ["--pdf-engine=xelatex"] : []),
-                ...(format === "epub" && normalizedCoverPath
-                    ? [`--epub-cover-image=${normalizedCoverPath}`]
-                    : []),
-            ];
-
-            const proc = Bun.spawn(["pandoc", ...pandocArgs], {
-                stdin: new TextEncoder().encode(combinedContent),
-            });
-
-            const exitCode = await proc.exited;
-            const stderr = await new Response(proc.stderr).text();
-
-            if (exitCode !== 0) {
-                throw new Error(
-                    `Pandoc failed for '${basename(outputPath)}' (code ${exitCode}).\nDetails: ${stderr.trim()}`,
-                );
-            }
-        } catch (error) {
+function buildInputFileList(
+    sepInfo: SeparationInformation,
+    translationsDir: string,
+): string[] {
+    const inputFiles: string[] = [];
+    for (let i = sepInfo.filestart; i <= sepInfo.fileend; i++) {
+        const filePath = join(translationsDir, `${i}.md`);
+        if (!existsSync(filePath)) {
             throw new Error(
-                `Failed to create '${sepInfo.name}.${format}': ${error instanceof Error ? error.message : String(error)
-                }`,
+                `Markdown file '${i}.md' does not exist but is required for '${sepInfo.title}'.`,
             );
         }
+        inputFiles.push(filePath);
+    }
+
+    if (inputFiles.length === 0) {
+        logger.warn(`No input files found for '${sepInfo.title}', skipping.`);
+    }
+    return inputFiles;
+}
+
+function buildPandocMetadata(
+    sepInfo: SeparationInformation,
+    assetsDir: string,
+    format: BookFormat
+): PandocMetadata {
+    const coverImagePath = join(assetsDir, sepInfo.image);
+    const normalizedCoverPath = existsSync(coverImagePath)
+        ? normalizePath(coverImagePath)
+        : null;
+
+    const currentDate = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+
+    const metadataArgs = [
+        `--metadata=title:${sepInfo.title}`,
+        `--metadata=creator:${sepInfo.author}`,
+        `--metadata=translator:${sepInfo.translator}`,
+        `--metadata=date:${currentDate}`,
+        `--metadata=rights:${sepInfo.rights}`,
+        `--metadata=lang:en-US`,
+        `--metadata=belongs-to-collection:${sepInfo.series}`,
+        `--metadata=collection-type:series`,
+        `--metadata=publisher:${sepInfo.translator}`,
+        `--metadata=pdftitle:${sepInfo.title}`,
+        `--metadata=pdfauthor:${sepInfo.author}`
+    ];
+
+    if (sepInfo.position !== undefined) {
+        metadataArgs.push(`--metadata=group-position:${sepInfo.position}`);
+    }
+
+    return { metadataArgs, normalizedCoverPath };
+}
+
+async function combineMarkdownContent(
+    inputFiles: string[],
+    format: BookFormat,
+    normalizedCoverPath: string | null,
+): Promise<string> {
+    const fileContents = await Promise.all(
+        inputFiles.map((path) => Bun.file(path).text()),
+    );
+    const combinedFileContent = fileContents.join("\n\n");
+
+    let contentPrefix = "";
+    if (format === "pdf" && normalizedCoverPath) {
+        contentPrefix = `![Cover](${normalizedCoverPath})\n\n\\newpage\n\n`;
+    }
+
+    return contentPrefix + combinedFileContent;
+}
+
+function buildPandocArgs(
+    format: BookFormat,
+    outputPath: string,
+    metadata: PandocMetadata,
+    translationsDir: string,
+    assetsDir: string,
+): string[] {
+    const { metadataArgs, normalizedCoverPath } = metadata;
+
+    const pandocArgs = [
+        "--from",
+        "markdown-yaml_metadata_block",
+        ...metadataArgs,
+        "--resource-path",
+        normalizePath(translationsDir),
+        "--resource-path",
+        normalizePath(assetsDir),
+        "-o",
+        normalizePath(outputPath),
+        "--toc",
+        "--top-level-division=chapter",
+        "-V documentclass=book"
+    ];
+
+    if (format === "pdf") {
+        pandocArgs.push("--pdf-engine=xelatex");
+        pandocArgs.push("--variable=fontsize:12pt");
+        pandocArgs.push("--variable=geometry:margin=1.2in");
+        pandocArgs.push("--variable=mainfont:Book Antiqua");
+        pandocArgs.push("--variable=classoption:openany");
+        pandocArgs.push("--variable=linestretch:1.25");
+    }
+
+    if (format === "epub" && normalizedCoverPath) {
+        pandocArgs.push(`--epub-cover-image=${normalizedCoverPath}`);
+    }
+
+    return pandocArgs;
+}
+
+async function runPandoc(
+    pandocArgs: string[],
+    combinedContent: string,
+    outputPath: string,
+) {
+    const proc = Bun.spawn(["pandoc", ...pandocArgs], {
+        stdin: new TextEncoder().encode(combinedContent),
     });
 
-    const results = await Promise.allSettled(creationPromises);
-    const failedTasks = results.filter((r) => r.status === "rejected");
+    const exitCode = await proc.exited;
+    if (exitCode !== 0) {
+        const stderr = await new Response(proc.stderr).text();
+        throw new Error(
+            `Pandoc failed for '${basename(outputPath)}' (code ${exitCode}).\nDetails: ${stderr.trim()}`,
+        );
+    }
+}
 
-    const duration = ((performance.now() - timer) / 1000).toFixed(2);
+async function processSeparationItem(
+    sepInfo: SeparationInformation,
+    format: BookFormat,
+    translationsDir: string,
+    assetsDir: string,
+    outputSubDir: string,
+) {
+    try {
+        const safeFileName = sepInfo.title.replace(/[\\/:*?"<>|]/g, "-");
+        const outputPath = join(outputSubDir, `${safeFileName}.${format}`);
+
+        // 1. Get and validate input files
+        const inputFiles = buildInputFileList(sepInfo, translationsDir);
+        if (inputFiles.length === 0) return; // Already warned in buildInputFileList
+
+        logger.info(`  Building '${basename(outputPath)}'...`);
+
+        const metadata = buildPandocMetadata(sepInfo, assetsDir, format);
+
+        const combinedContent = await combineMarkdownContent(
+            inputFiles,
+            format,
+            metadata.normalizedCoverPath,
+        );
+
+        const pandocArgs = buildPandocArgs(
+            format,
+            outputPath,
+            metadata,
+            translationsDir,
+            assetsDir,
+        );
+
+        await runPandoc(pandocArgs, combinedContent, outputPath);
+    } catch (error) {
+        throw new Error(
+            `Failed to create '${sepInfo.title}.${format}': ${error instanceof Error ? error.message : String(error)
+            }`,
+        );
+    }
+}
+
+function reportResults(
+    results: PromiseSettledResult<unknown>[],
+    timerStart: number,
+    format: BookFormat,
+) {
+    const failedTasks = results.filter((r) => r.status === "rejected");
+    const duration = ((performance.now() - timerStart) / 1000).toFixed(2);
+
     if (failedTasks.length > 0) {
         failedTasks.forEach((task) => {
             const reason = (task as PromiseRejectedResult).reason;
@@ -259,6 +338,38 @@ async function combineToPDFsOrEPUBs(
             `All ${format.toUpperCase()} files created successfully in ${duration}s.`,
         );
     }
+}
+
+async function combineToPDFsOrEPUBs(
+    format: BookFormat,
+    translationsDir: string,
+    assetsDir: string,
+    distDir: string,
+) {
+    const timer = performance.now();
+
+    const separationInformation = await loadSeparationInfo(assetsDir, format);
+    if (!separationInformation) return;
+
+    logger.task(
+        `Creating ${format.toUpperCase()} files... (Total: ${separationInformation.length})`,
+    );
+
+    const outputSubDir = await prepareOutputDirectory(distDir, format);
+
+    const creationPromises = separationInformation.map((sepInfo) =>
+        processSeparationItem(
+            sepInfo,
+            format,
+            translationsDir,
+            assetsDir,
+            outputSubDir,
+        ),
+    );
+
+    const results = await Promise.allSettled(creationPromises);
+
+    reportResults(results, timer, format);
 }
 
 main();
