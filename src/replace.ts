@@ -15,35 +15,6 @@ const logger = pino({
     transport,
 });
 
-const isUpper = (s: string) => s === s.toUpperCase() && s !== s.toLowerCase();
-const isLower = (s: string) => s === s.toLowerCase() && s !== s.toUpperCase();
-const isTitle = (s: string) =>
-    s.length > 0 &&
-    isUpper(s[0]!) &&
-    (s.length === 1 || s.substring(1) === s.substring(1).toLowerCase());
-const toTitle = (s: string) =>
-    s.length > 0 ? s[0]!.toUpperCase() + s.substring(1).toLowerCase() : "";
-
-function matchCase(word: string, replacement: string): string {
-    const wordParts = word.split(' ');
-    const replacementParts = replacement.split(' ');
-
-    if (wordParts.length > 1 && wordParts.length === replacementParts.length) {
-        const singleWord = (w: string, r: string): string => {
-            if (isUpper(w)) return r.toUpperCase();
-            if (isTitle(w)) return toTitle(r);
-            if (isLower(w)) return r.toLowerCase();
-            return r;
-        };
-        return wordParts.map((w, i) => singleWord(w, replacementParts[i]!)).join(' ');
-    }
-
-    if (isUpper(word)) return replacement.toUpperCase();
-    if (isTitle(word)) return toTitle(replacement);
-    if (isLower(word)) return replacement.toLowerCase();
-    return replacement;
-}
-
 let totalReplacements = 0;
 
 async function replaceInFile(
@@ -68,17 +39,16 @@ async function replaceInFile(
 
             const newLine = line.replace(searchRegex, (match, ...args) => {
                 const offset: number = args[args.length - 2];
-                const rep = matchCase(match, replacement);
                 const wordNum =
                     line.substring(0, offset).split(/\s+/).filter(Boolean).length + 1;
 
                 logger.debug(
-                    `${filepath}: line ${lineNum}, word ${wordNum}: '${match}' => '${rep}'`
+                    `${filepath}: line ${lineNum}, word ${wordNum}: '${match}' => '${replacement}'`
                 );
 
                 lineModified = true;
                 totalReplacements++;
-                return rep;
+                return replacement;
             });
 
             if (lineModified) fileModified = true;
@@ -101,7 +71,7 @@ async function replaceInFolder(
     searchPattern: string,
     replacement: string
 ) {
-    const searchRegex = new RegExp(searchPattern, 'gi');
+    const searchRegex = new RegExp(`\\b${searchPattern}\\b`, 'gi');
     let entries;
 
     try {

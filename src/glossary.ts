@@ -19,7 +19,7 @@ const NGRAM_SEARCH_MAX_LENGTH = 2; // Max length of term to check for subsequenc
 
 // Matches a full chapter block, starting with "第...章" on a line
 // and ending with "(本章完)" on a line.
-const CHAPTER_REGEX = /^第(\d+)章[\s\S]*?\(本章完\)$/gm;
+const CHAPTER_REGEX = /^第(\d+)章[\s\S]*?\(本章完\)?$/gm;
 
 interface MatchResult {
     term: string;
@@ -97,41 +97,6 @@ function chineseFuzzySearch(
             if (score >= threshold) {
                 foundTerms.add(originalTerm);
                 break;
-            }
-        }
-    }
-    return foundTerms;
-}
-
-function chineseNGramSearch(
-    terms: string[],
-    originalToCleanMap: Map<string, string>,
-    text: string,
-): Set<string> {
-    const foundTerms = new Set<string>();
-    const cleanText = preprocessChineseText(text);
-
-    for (const originalTerm of terms) {
-        const cleanTerm = originalToCleanMap.get(originalTerm);
-        if (!cleanTerm || cleanTerm.length === 0) continue;
-
-        const termChars = [...cleanTerm];
-        if (termChars.length <= NGRAM_SEARCH_MAX_LENGTH) {
-            try {
-                const escapedTermChars = termChars.map((char) =>
-                    char.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-                );
-
-                const subsequenceRegex = new RegExp(escapedTermChars.join(".*?"), "u");
-
-                if (subsequenceRegex.test(cleanText)) {
-                    foundTerms.add(originalTerm);
-                }
-            } catch (e) {
-                console.warn(
-                    `⚠️ Could not create subsequence regex for term: ${originalTerm}`,
-                    e,
-                );
             }
         }
     }
@@ -239,7 +204,7 @@ async function processAndCopy(
 
     for (const match of chapterMatches) {
         const originalChapterTextFragment = match[0];
-        const actualChapterNumber = parseInt(match[1]!, 10); // Use ! assertion
+        const actualChapterNumber = parseInt(match[1]!, 10);
 
         if (isNaN(actualChapterNumber)) {
             console.warn(`⚠️  Could not parse chapter number from match. Skipping...`);
@@ -332,24 +297,26 @@ async function processAndCopy(
         `Phase 2 (Chinese Fuzzy): Found ${foundFuzzyInText.size} fuzzy matched terms.`,
     );
 
-    const termsForNGram = termsForFuzzy.filter(
-        (term) => !foundFuzzyInText.has(term),
-    );
-    console.time("Phase 3 (Chinese N-gram/Subsequence)");
-    const foundNGramInText = chineseNGramSearch(
-        termsForNGram,
-        originalToCleanMap,
-        combinedChapterText,
-    );
-    console.timeEnd("Phase 3 (Chinese N-gram/Subsequence)");
-    console.log(
-        `Phase 3 (Chinese N-gram/Subsequence): Found ${foundNGramInText.size} n-gram matched terms.`,
-    );
+    // Stopping NGram search.
+
+    // const termsForNGram = termsForFuzzy.filter(
+    //     (term) => !foundFuzzyInText.has(term),
+    // );
+    // console.time("Phase 3 (Chinese N-gram/Subsequence)");
+    // const foundNGramInText = chineseNGramSearch(
+    //     termsForNGram,
+    //     originalToCleanMap,
+    //     combinedChapterText,
+    // );
+    // console.timeEnd("Phase 3 (Chinese N-gram/Subsequence)");
+    // console.log(
+    //     `Phase 3 (Chinese N-gram/Subsequence): Found ${foundNGramInText.size} n-gram matched terms.`,
+    // );
 
     const allFoundTerms = new Set([
         ...foundExactInText,
         ...foundFuzzyInText,
-        ...foundNGramInText,
+        // ...foundNGramInText,
     ]);
     console.log(
         `\nTotal unique glossary terms after all phases: ${allFoundTerms.size}`,
