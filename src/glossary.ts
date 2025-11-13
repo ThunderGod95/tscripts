@@ -297,26 +297,9 @@ async function processAndCopy(
         `Phase 2 (Chinese Fuzzy): Found ${foundFuzzyInText.size} fuzzy matched terms.`,
     );
 
-    // Stopping NGram search.
-
-    // const termsForNGram = termsForFuzzy.filter(
-    //     (term) => !foundFuzzyInText.has(term),
-    // );
-    // console.time("Phase 3 (Chinese N-gram/Subsequence)");
-    // const foundNGramInText = chineseNGramSearch(
-    //     termsForNGram,
-    //     originalToCleanMap,
-    //     combinedChapterText,
-    // );
-    // console.timeEnd("Phase 3 (Chinese N-gram/Subsequence)");
-    // console.log(
-    //     `Phase 3 (Chinese N-gram/Subsequence): Found ${foundNGramInText.size} n-gram matched terms.`,
-    // );
-
     const allFoundTerms = new Set([
         ...foundExactInText,
         ...foundFuzzyInText,
-        // ...foundNGramInText,
     ]);
     console.log(
         `\nTotal unique glossary terms after all phases: ${allFoundTerms.size}`,

@@ -138,7 +138,7 @@ async function prepareOutputDirectory(
     distDir: string,
     format: BookFormat,
 ): Promise<string> {
-    const outputSubDir = join(distDir, `${format}s`);
+    const outputSubDir = join(distDir, `${format}`);
     if (!existsSync(outputSubDir)) {
         await mkdir(outputSubDir, { recursive: true });
     }
@@ -245,7 +245,7 @@ function buildPandocArgs(
         pandocArgs.push("--pdf-engine=xelatex");
         pandocArgs.push("--variable=fontsize:12pt");
         pandocArgs.push("--variable=geometry:margin=1.2in");
-        pandocArgs.push("--variable=mainfont:Book Antiqua");
+        pandocArgs.push("--variable=mainfont:Bookerly");
         pandocArgs.push("--variable=classoption:openany");
         pandocArgs.push("--variable=linestretch:1.25");
     }
