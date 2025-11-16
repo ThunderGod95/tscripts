@@ -19,7 +19,7 @@ const NGRAM_SEARCH_MAX_LENGTH = 2; // Max length of term to check for subsequenc
 
 // Matches a full chapter block, starting with "第...章" on a line
 // and ending with "(本章完)" on a line.
-const CHAPTER_REGEX = /^第(\d+)章[\s\S]*?\(本章完\)?$/gm;
+const CHAPTER_REGEX = /第(.*?)章[\s\S]?$/gm;
 
 interface MatchResult {
     term: string;
